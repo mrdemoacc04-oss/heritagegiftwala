@@ -1,0 +1,35 @@
+{
+  "name": "heritagegiftwala-storefront",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3456",
+    "build": "next build",
+    "start": "next start -p 3456",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@medusajs/js-sdk": "^2.21.2",
+    "@medusajs/types": "^2.21.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "canvas-confetti": "^1.9.4",
+    "lenis": "^1.3.26",
+    "motion": "^14.0.0",
+    "next": "^16.2.10",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "server-only": "^0.0.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3"
+  }
+}

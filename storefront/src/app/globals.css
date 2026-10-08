@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* ── Brand tokens, lifted from the logo: lagoon disc, ribbon red, pencil yellow, panda ink ── */
+@theme {
+  --color-cream: #fff8ee;
+  --color-paper: #fffdf9;
+  --color-ink: #1e1b2e;
+  --color-ink-2: #514c63;
+  --color-ink-3: #8a8597;
+  --color-line: #ecdfcc;
+  --color-lagoon: #5adce3;
+  --color-lagoon-100: #dff8f9;
+  --color-lagoon-600: #12a7b3;
+  --color-lagoon-800: #0a6670;
+  --color-ribbon: #d72d4d;
+  --color-ribbon-700: #b01e3b;
+  --color-ribbon-100: #ffe1e6;
+  --color-sun: #ffc93c;
+  --color-sun-100: #fff1c4;
+  --color-blush: #ffb9b0;
+  --color-pink: #ff8fb1;
+  --color-mint: #bff0e4;
+  --color-lilac: #d9ccff;
+  --color-kraft: #c99b6d;
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-hand: var(--font-caveat), "Comic Sans MS", cursive;
+
+  --radius-blob: 2.25rem;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-marquee: marquee var(--marquee-speed, 38s) linear infinite;
+  --animate-marquee-rev: marquee-rev var(--marquee-speed, 38s) linear infinite;
+  --animate-bob: bob 5s ease-in-out infinite;
+  --animate-spin-slow: spin 28s linear infinite;
+  --animate-wiggle: wiggle 0.6s var(--ease-spring);
+  --animate-ping-soft: ping-soft 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+  @keyframes marquee {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
+  }
+  @keyframes marquee-rev {
+    from { transform: translate3d(-50%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+    50% { transform: translateY(-10px) rotate(calc(var(--r, 0deg) + 2deg)); }
+  }
+  @keyframes wiggle {
+    0% { transform: rotate(0) scale(1); }
+    30% { transform: rotate(-12deg) scale(1.15); }
+    60% { transform: rotate(9deg) scale(1.05); }
+    100% { transform: rotate(0) scale(1); }
+  }
+  @keyframes ping-soft {
+    0% { transform: scale(1); opacity: 0.55; }
+    80%, 100% { transform: scale(2.3); opacity: 0; }
+  }
+}
+
+@layer base {
+  html {
+    overflow-x: clip;
+    -webkit-tap-highlight-color: transparent;
+    scroll-padding-top: 6rem;
+  }
+  body {
+    background: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  p { text-wrap: pretty; }
+  ::selection { background: var(--color-sun); color: var(--color-ink); }
+  :focus-visible {
+    outline: 3px solid var(--color-lagoon-600);
+    outline-offset: 3px;
+    border-radius: 10px;
+  }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+}
+
+/* ── Signature textures ── */
+@utility dots {
+  /* The dotted ring from the logo, as a repeatable polka. */
+  background-image: radial-gradient(circle, var(--dot, rgb(255 255 255 / 0.85)) var(--dot-size, 2.2px), transparent calc(var(--dot-size, 2.2px) + 0.6px));
+  background-size: var(--dot-gap, 18px) var(--dot-gap, 18px);
+}
+@utility paper-grain {
+  background-image: radial-gradient(rgb(30 27 46 / 0.045) 1px, transparent 1px);
+  background-size: 6px 6px;
+}
+@utility stitch {
+  /* Dashed "sewn" outline, like the white dots around the logo disc. */
+  outline: 2px dashed rgb(255 255 255 / 0.9);
+  outline-offset: -9px;
+}
+@utility sticker {
+  filter: drop-shadow(0 2px 0 #fff) drop-shadow(0 -2px 0 #fff) drop-shadow(2px 0 0 #fff) drop-shadow(-2px 0 0 #fff)
+    drop-shadow(0 14px 18px rgb(30 27 46 / 0.16));
+}
+@utility product-shadow {
+  filter: drop-shadow(0 18px 22px rgb(30 27 46 / 0.18)) drop-shadow(0 4px 6px rgb(30 27 46 / 0.08));
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+@utility text-outline {
+  -webkit-text-stroke: 2px var(--color-ink);
+  color: transparent;
+}
+
+/* The product page's sticky add-to-bag bar must not hide the footer's last line. */
+@media (width < 64rem) {
+  body:has(.pdp-sticky) .footer-bottom { padding-bottom: 5rem; }
+}
+
+/* Lenis */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
