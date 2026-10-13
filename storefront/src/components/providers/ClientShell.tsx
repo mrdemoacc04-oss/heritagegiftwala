@@ -5,6 +5,7 @@ import { MotionConfig } from "motion/react";
 import Lenis from "lenis";
 import { useCart } from "@/lib/store/cart";
 import { useWishlist } from "@/lib/store/wishlist";
+import { useAuth } from "@/lib/store/auth";
 import { useUI } from "@/lib/store/ui";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FlyLayer } from "@/components/cart/FlyLayer";
@@ -19,6 +20,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     useCart.persist.rehydrate();
     useWishlist.persist.rehydrate();
+    void useAuth.getState().init();
   }, []);
 
   useEffect(() => {
