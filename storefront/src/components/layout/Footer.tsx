@@ -73,6 +73,7 @@ export function Footer({ categories }: { categories: Category[] }) {
             <FooterLink href="/wishlist">Your wishlist</FooterLink>
           </FooterCol>
           <FooterCol title="Help">
+            <FooterLink href="/track">Track your order</FooterLink>
             <FooterLink href="/help#delivery">Delivery</FooterLink>
             <FooterLink href="/help#returns">Returns</FooterLink>
             <FooterLink href="/help#contact">Contact us</FooterLink>

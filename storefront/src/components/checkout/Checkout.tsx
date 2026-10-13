@@ -5,9 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { ArrowLeftIcon, CreditCardIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CreditCardIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon, UserCircleIcon, MapPinIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
 import { cartSubtotal, useCart } from "@/lib/store/cart";
+import { useAuth, type Customer } from "@/lib/store/auth";
 import { medusaEnabled, sdk } from "@/lib/medusa";
 import { cx, formatPrice } from "@/lib/format";
 import { site } from "@/lib/site";
@@ -53,6 +54,19 @@ function validate(f: Form) {
   return e;
 }
 
+/** What a saved address (or the customer's own details) can fill in on the form. */
+function fromAddress(a: NonNullable<Customer["addresses"]>[number]): Partial<Form> {
+  return {
+    name: [a.first_name, a.last_name].filter(Boolean).join(" "),
+    address1: a.address_1 ?? "",
+    address2: a.address_2 ?? "",
+    city: a.city ?? "",
+    state: STATES.find((s) => s.toLowerCase() === (a.province ?? "").toLowerCase()) ?? "Gujarat",
+    pincode: a.postal_code ?? "",
+    ...(a.phone ? { phone: a.phone } : {}),
+  };
+}
+
 export function Checkout() {
   const lines = useCart((s) => s.lines);
   const cartId = useCart((s) => s.cartId);
@@ -67,6 +81,23 @@ export function Checkout() {
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string>();
   const subtotal = cartSubtotal(lines);
+  const customer = useAuth((s) => s.customer);
+  const authReady = useAuth((s) => s.ready);
+  const [prefilledFor, setPrefilledFor] = useState<string>();
+
+  // A signed-in customer's details and default address fill the form once, without overwriting anything typed.
+  if (customer && prefilledFor !== customer.id) {
+    setPrefilledFor(customer.id);
+    const addresses = customer.addresses ?? [];
+    const home = addresses.find((a) => a.is_default_shipping) ?? addresses[0];
+    setForm((f) => ({
+      ...f,
+      email: f.email || customer.email,
+      phone: f.phone || customer.phone || "",
+      name: f.name || [customer.first_name, customer.last_name].filter(Boolean).join(" "),
+      ...(home && !f.address1 ? fromAddress(home) : {}),
+    }));
+  }
 
   // Live shipping options and payment providers come from Medusa once it is connected.
   useEffect(() => {
@@ -119,7 +150,7 @@ export function Checkout() {
     }
     setPlacing(true);
     setFailure(undefined);
-    const summary = { lines, subtotal, delivery, total, name: form.name, city: form.city };
+    const summary = { lines, subtotal, delivery, total, name: form.name, city: form.city, email: form.email.trim() };
 
     try {
       let orderNo: string;
@@ -185,6 +216,26 @@ export function Checkout() {
           </p>
         )}
 
+        {medusaEnabled && authReady && !customer && (
+          <Link
+            href="/account/login?next=/checkout"
+            className="group mt-5 flex items-center gap-3 rounded-2xl border-2 border-dashed border-ink/30 bg-white p-4 transition hover:border-ink"
+          >
+            <UserCircleIcon size={28} weight="duotone" className="shrink-0 text-lagoon-600" />
+            <span className="flex-1 text-sm">
+              <span className="block font-bold">Have an account? Sign in</span>
+              <span className="text-ink-2">to fill in your details and keep track of this order. Or just carry on as a guest.</span>
+            </span>
+            <span className="font-bold underline underline-offset-4 group-hover:text-ribbon">Sign in</span>
+          </Link>
+        )}
+        {customer && (
+          <p className="mt-5 flex items-center gap-2.5 rounded-2xl bg-lagoon-100 p-4 text-sm font-semibold">
+            <UserCircleIcon size={22} weight="fill" className="shrink-0 text-lagoon-800" />
+            Signed in as {customer.email}. This order will appear in your account.
+          </p>
+        )}
+
         <Step n={1} title="Contact">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Email" name="email" type="email" autoComplete="email" value={form.email} onChange={set("email")} error={errors.email} />
@@ -193,6 +244,24 @@ export function Checkout() {
         </Step>
 
         <Step n={2} title="Delivery address">
+          {(customer?.addresses?.length ?? 0) > 0 && (
+            <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Your saved addresses">
+              {customer!.addresses!.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, ...fromAddress(a) }))}
+                  className="flex items-center gap-2 rounded-2xl border-2 border-ink/15 bg-white px-3.5 py-2 text-left text-sm transition hover:border-ink"
+                >
+                  <MapPinIcon size={18} weight="duotone" className="shrink-0 text-ribbon" />
+                  <span>
+                    <span className="block font-bold">{[a.first_name, a.last_name].filter(Boolean).join(" ") || "Saved address"}</span>
+                    <span className="text-ink-2">{a.address_1}, {a.city}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" name="name" autoComplete="name" value={form.name} onChange={set("name")} error={errors.name} className="sm:col-span-2" />
             <Field label="House, building, street" name="address1" autoComplete="address-line1" value={form.address1} onChange={set("address1")} error={errors.address1} className="sm:col-span-2" />

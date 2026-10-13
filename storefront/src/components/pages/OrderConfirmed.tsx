@@ -7,6 +7,7 @@ import { motion } from "motion/react";
 import confetti from "canvas-confetti";
 import { Panda } from "@/components/brand/Panda";
 import { formatPrice } from "@/lib/format";
+import { useAuth } from "@/lib/store/auth";
 import { paperById } from "@/lib/wrap";
 import type { CartLine } from "@/lib/types";
 
@@ -22,6 +23,7 @@ const read = (): Last | null => {
 
 export function OrderConfirmed() {
   const [order, setOrder] = useState<Last | null>(null);
+  const signedIn = useAuth((s) => Boolean(s.customer));
 
   useEffect(() => {
     // sessionStorage only exists in the browser, so the receipt is read after mount.
@@ -77,9 +79,21 @@ export function OrderConfirmed() {
           <p className="mt-2 text-sm text-ink-2">Heading to {order.city}.</p>
         </div>
       )}
-      <Link href="/shop" className="mt-8 rounded-full bg-ink px-7 py-3.5 text-lg font-bold text-white shadow-[0_5px_0_var(--color-ribbon)] hover:bg-ribbon">
-        Keep shopping
-      </Link>
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        {order && !order.preview && (
+          <Link href="/track" className="rounded-full border-2 border-ink bg-white px-7 py-3.5 text-lg font-bold hover:bg-lagoon">
+            Track this order
+          </Link>
+        )}
+        {signedIn && (
+          <Link href="/account" className="rounded-full border-2 border-ink bg-white px-7 py-3.5 text-lg font-bold hover:bg-sun">
+            View in my account
+          </Link>
+        )}
+        <Link href="/shop" className="rounded-full bg-ink px-7 py-3.5 text-lg font-bold text-white shadow-[0_5px_0_var(--color-ribbon)] hover:bg-ribbon">
+          Keep shopping
+        </Link>
+      </div>
     </div>
   );
 }

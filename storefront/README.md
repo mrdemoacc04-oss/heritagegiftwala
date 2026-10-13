@@ -21,7 +21,11 @@ Set these (see `.env.example`) and the same UI reads products, categories, price
 | `NEXT_PUBLIC_MEDUSA_REGION_ID` | Medusa admin → Settings → Regions → India (INR) |
 | `NEXT_PUBLIC_SITE_URL` | `https://heritagegiftwala.in` |
 
-On the Medusa side, add the Vercel domain to `STORE_CORS`.
+On the Medusa side, add the Vercel domain to `STORE_CORS`. The backend is in [`../backend`](../backend/README.md); its first boot prints the region id and publishable key.
+
+**Customer accounts:** shoppers can create an account, sign in, see their orders, edit their details and keep saved addresses (`/account`, `/account/login`, `/account/register`). It uses Medusa's built-in customer login, so no extra backend work is needed. The sign-in token is kept in the browser (not a cookie), which is why it works when the storefront and backend are on different domains. Checkout fills itself in for signed-in customers, and guests can still check out without an account. Password-reset-by-email isn't built yet: it needs an email provider connected to Medusa first.
+
+**Order tracking:** `/track` takes an order number and the checkout email, and calls the backend's `POST /store/track-order`. The stages (placed, packed, on its way, delivered) follow what the owner does on the order in Medusa admin.
 
 ## Mapping the catalog into Medusa
 
@@ -33,7 +37,7 @@ The storefront reads shop-specific bits from **product metadata**, so the owner 
 | `badge` | `Bestseller` | Sticker on the card |
 | `recipients` | `her,colleague` | Gift Finder, "For her" filters (`her, him, kids, parents, colleague, home`) |
 | `occasions` | `birthday,thank-you` | Gift Finder (`birthday, anniversary, festive, housewarming, thank-you, just-because`) |
-| `details` | `Insulated steel,Hand wash` | "The details" list |
+| `details` | `Insulated steel \| Hand wash` | "The details" list (separate points with `\|`) |
 | `rank` | `1` | Featured order |
 | `hidden` | `true` | Keep out of listings (used by the gift-wrap product) |
 

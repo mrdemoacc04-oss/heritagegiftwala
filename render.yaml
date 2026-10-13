@@ -1,0 +1,53 @@
+# Render Blueprint: Heritage Gift Wala backend (Medusa) + admin panel.
+# Render dashboard → New → Blueprint → pick this repo. The database lives on Supabase, so no database block here.
+services:
+  - type: web
+    name: heritagegiftwala-backend
+    runtime: node
+    rootDir: backend
+    # Medusa needs roughly 1–2 GB of RAM (the admin panel is built into the same service). If the build
+    # runs out of memory on a smaller plan, pick a bigger one.
+    plan: standard
+    healthCheckPath: /health
+    buildCommand: npm install --include=dev && npm run build && cd .medusa/server && npm install --omit=dev
+    # On every deploy: apply database changes, create the owner login + first-time shop setup (both are
+    # safe to repeat and never overwrite the owner's edits), then start the server.
+    startCommand: cd .medusa/server && npx medusa db:migrate && npx medusa exec ./src/scripts/bootstrap.js && npx medusa start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      # ── Fill these in on the Render dashboard (see backend/.env.example) ──
+      - key: DATABASE_URL
+        sync: false
+      - key: MEDUSA_BACKEND_URL
+        sync: false
+      - key: STORE_CORS
+        sync: false
+      - key: ADMIN_CORS
+        sync: false
+      - key: AUTH_CORS
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: STOREFRONT_URL
+        sync: false
+      - key: S3_FILE_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false

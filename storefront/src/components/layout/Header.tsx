@@ -5,10 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretDownIcon, HandbagSimpleIcon, HeartIcon, ListIcon, MagnifyingGlassIcon, XIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, HandbagSimpleIcon, HeartIcon, ListIcon, UserCircleIcon, MagnifyingGlassIcon, XIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { cartCount, useCart } from "@/lib/store/cart";
 import { useWishlist } from "@/lib/store/wishlist";
+import { useAuth } from "@/lib/store/auth";
 import { bagTarget, useUI } from "@/lib/store/ui";
 import { cx, formatPrice } from "@/lib/format";
 
@@ -16,6 +17,7 @@ const links = [
   { href: "/collections/gift-hampers", label: "Hampers" },
   { href: "/gift-finder", label: "Gift Finder" },
   { href: "/#visit", label: "Our Shop" },
+  { href: "/track", label: "Track order" },
 ];
 
 export function Header() {
@@ -24,6 +26,7 @@ export function Header() {
   const pathname = usePathname();
   const lines = useCart((s) => s.lines);
   const wish = useWishlist((s) => s.handles.length);
+  const customer = useAuth((s) => s.customer);
   const { setCartOpen, setSearchOpen, setMenuOpen, menuOpen, bump } = useUI();
   const bagRef = useRef<HTMLButtonElement>(null);
   const count = cartCount(lines);
@@ -105,6 +108,19 @@ export function Header() {
           <button onClick={() => setSearchOpen(true)} aria-label="Search" className="grid size-11 place-items-center rounded-full hover:bg-white md:hidden">
             <MagnifyingGlassIcon size={22} weight="bold" />
           </button>
+          <Link
+            href={customer ? "/account" : "/account/login"}
+            aria-label={customer ? `My account, signed in as ${customer.first_name || customer.email}` : "Sign in"}
+            className="relative hidden size-11 place-items-center rounded-full transition hover:bg-white sm:grid"
+          >
+            {customer ? (
+              <span className="grid size-8 place-items-center rounded-full bg-ink font-display text-sm font-extrabold text-white">
+                {(customer.first_name || customer.email)[0].toUpperCase()}
+              </span>
+            ) : (
+              <UserCircleIcon size={25} weight="bold" />
+            )}
+          </Link>
           <Link href="/wishlist" aria-label={`Wishlist, ${wish} saved`} className="relative grid size-11 place-items-center rounded-full transition hover:bg-white">
             <HeartIcon size={23} weight={wish ? "fill" : "bold"} className={wish ? "text-ribbon" : ""} />
             {wish > 0 && <Badge n={wish} className="bg-ink text-white" />}
@@ -220,6 +236,7 @@ export function MobileMenuOverlay() {
 
 function MobileMenu({ onClose }: { onClose: () => void }) {
   const { categories, products } = useCatalog();
+  const customer = useAuth((s) => s.customer);
   const byHandle = new Map(products.map((p) => [p.handle, p]));
   return (
     <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
@@ -239,7 +256,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="mt-6 grid gap-1 px-3">
-          {[{ href: "/shop", label: "Shop everything" }, ...links].map((l, i) => (
+          {[{ href: "/shop", label: "Shop everything" }, { href: customer ? "/account" : "/account/login", label: customer ? "My account" : "Sign in" }, ...links].map((l, i) => (
             <motion.div key={l.href} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 + i * 0.04 }}>
               <Link href={l.href} onClick={onClose} className="block rounded-2xl px-3 py-2.5 font-display text-3xl font-extrabold active:bg-white">
                 {l.label}

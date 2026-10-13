@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { HttpTypes } from "@medusajs/types";
 import { medusaEnabled, regionId, sdk } from "@/lib/medusa";
+import { ownPhoto } from "@/lib/format";
 import type { CartLine, Product, WrapChoice } from "@/lib/types";
 
 export type CartProduct = Pick<Product, "id" | "handle" | "title" | "image" | "tint" | "price" | "variantId">;
@@ -30,7 +31,7 @@ function linesFrom(cart: HttpTypes.StoreCart): CartLine[] {
       productId: item.product_id ?? "",
       handle: item.product_handle ?? "",
       title: item.product_title ?? item.title,
-      image: item.thumbnail ?? "",
+      image: ownPhoto(item.thumbnail),
       tint: m.tint ?? "#F4E9D8",
       price: Number(item.unit_price),
       quantity: item.quantity,

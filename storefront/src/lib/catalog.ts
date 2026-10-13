@@ -6,13 +6,15 @@ import type { HttpTypes } from "@medusajs/types";
 import { categories as localCategories } from "@/data/categories";
 import { products as localProducts } from "@/data/products";
 import { medusaEnabled, regionId, sdk } from "./medusa";
+import { ownPhoto } from "./format";
 import type { Category, Occasion, Product, Recipient } from "./types";
 
 const PRODUCT_FIELDS =
   "*variants.calculated_price,+variants.inventory_quantity,+variants.manage_inventory,*categories,*images,+metadata";
 
-const csv = (v: unknown) =>
-  typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : Array.isArray(v) ? (v as string[]) : [];
+const list = (v: unknown, sep: string) =>
+  typeof v === "string" ? v.split(sep).map((s) => s.trim()).filter(Boolean) : Array.isArray(v) ? (v as string[]) : [];
+const csv = (v: unknown) => list(v, ",");
 
 /**
  * Medusa product → storefront product. Shop-specific fields (tint, badge,
@@ -23,7 +25,7 @@ function fromMedusa(p: HttpTypes.StoreProduct, index: number): Product {
   const m = (p.metadata ?? {}) as Record<string, unknown>;
   const variant = p.variants?.[0];
   const price = variant?.calculated_price;
-  const images = (p.images ?? []).map((i) => i.url);
+  const images = (p.images ?? []).map((i) => ownPhoto(i.url));
   const managed = variant?.manage_inventory ?? false;
   return {
     id: p.id,
@@ -37,15 +39,15 @@ function fromMedusa(p: HttpTypes.StoreProduct, index: number): Product {
     categories: (p.categories ?? []).map((c) => c.handle),
     recipients: csv(m.recipients) as Recipient[],
     occasions: csv(m.occasions) as Occasion[],
-    image: p.thumbnail ?? images[0] ?? "",
+    image: ownPhoto(p.thumbnail) || images[0] || "",
     studio: images[1],
     shelf: images[2],
     tint: typeof m.tint === "string" ? m.tint : "#F4E9D8",
     badge: typeof m.badge === "string" ? m.badge : undefined,
-    details: csv(m.details),
+    details: list(m.details, "|"),
     variantId: variant?.id,
     inStock: !managed || (variant?.inventory_quantity ?? 0) > 0,
-    rank: typeof m.rank === "number" ? m.rank : index + 1,
+    rank: m.rank !== undefined && m.rank !== "" && Number.isFinite(Number(m.rank)) ? Number(m.rank) : index + 1,
     isNew: m.is_new === true || m.is_new === "true",
     hidden: m.hidden === true || m.hidden === "true",
   };

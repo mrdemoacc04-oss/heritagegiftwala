@@ -1,0 +1,9 @@
+.env
+node_modules
+.medusa
+dist
+uploads
+static
+.cache
+*.tsbuildinfo
+.DS_Store
