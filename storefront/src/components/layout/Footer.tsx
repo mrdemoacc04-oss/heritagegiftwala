@@ -68,7 +68,6 @@ export function Footer({ categories }: { categories: Category[] }) {
           </FooterCol>
           <FooterCol title="Gifting">
             <FooterLink href="/gift-finder">Gift Finder</FooterLink>
-            <FooterLink href="/#wrap-studio">Wrap Studio</FooterLink>
             <FooterLink href="/#hamper-builder">Build a Hamper</FooterLink>
             <FooterLink href="/shop?max=500">Gifts under ₹500</FooterLink>
             <FooterLink href="/wishlist">Your wishlist</FooterLink>

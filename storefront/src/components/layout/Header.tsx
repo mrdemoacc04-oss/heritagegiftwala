@@ -15,7 +15,6 @@ import { cx, formatPrice } from "@/lib/format";
 const links = [
   { href: "/collections/gift-hampers", label: "Hampers" },
   { href: "/gift-finder", label: "Gift Finder" },
-  { href: "/#wrap-studio", label: "Wrap it" },
   { href: "/#visit", label: "Our Shop" },
 ];
 

@@ -5,7 +5,6 @@ import { ProductTabs } from "@/components/home/ProductTabs";
 import { ShopVisit } from "@/components/home/ShopVisit";
 import { ShopMap } from "@/components/brand/ShopMap";
 import { GiftFinder } from "@/components/gifting/GiftFinder";
-import { WrapStudio } from "@/components/gifting/WrapStudio";
 import { HamperBuilder } from "@/components/gifting/HamperBuilder";
 import { getCategories, getProducts } from "@/lib/catalog";
 import { site } from "@/lib/site";
@@ -46,7 +45,6 @@ export default async function Home() {
       <section className="mx-auto max-w-[1400px] px-4 pt-28 sm:px-6 sm:pt-36">
         <GiftFinder />
       </section>
-      <WrapStudio />
       <HamperBuilder />
       <ShopVisit>
         <ShopMap className="mt-24" />
