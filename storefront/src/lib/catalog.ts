@@ -11,7 +11,7 @@ import type { Category, Occasion, Product, Recipient, ShopSettings } from "./typ
 
 /** Cache tag the admin panel expires whenever the owner changes products, categories or delivery fees. */
 export const CATALOG_TAG = "catalog";
-const REFRESH_SECONDS = 300;
+const REFRESH_SECONDS = 60;
 
 type ProductRow = {
   id: string; handle: string; title: string; subtitle: string; description: string; price: number; compare_at: number | null;
