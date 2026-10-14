@@ -61,6 +61,8 @@ Open `https://www.heritagegiftwala.in/admin` and sign in with the email and temp
 
 After that, signing in is: email + password, then the code from the app. See [SECURITY.md](SECURITY.md) for everything that protects the panel.
 
+**`APP_SECRET` must be the same everywhere that uses this database.** It encrypts the owner's two-step secret, so if you ever run the site on your own computer against the live database, put the same `APP_SECRET` in `storefront/.env.local` as on Vercel. Otherwise a two-step set-up made on one side can't be read on the other and the owner is locked out (fixable with `npm run admin:create -- you@email.com --reset-2fa`). The simplest rule: do the first sign-in and the two-step set-up on the live site.
+
 The database connection to Supabase is encrypted and checked against Supabase's own certificate, which the app already carries; there is nothing to configure.
 
 ## Keeping it safe
