@@ -6,7 +6,8 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { CheckIcon, GiftIcon, PackageIcon, SpinnerGapIcon, TruckIcon, HouseLineIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
-import { medusaEnabled, sdk } from "@/lib/medusa";
+import { useCatalog } from "@/components/providers/CatalogProvider";
+import { useAuth } from "@/lib/store/auth";
 import { cx, formatPrice, ownPhoto } from "@/lib/format";
 import { site } from "@/lib/site";
 
@@ -23,10 +24,13 @@ type Tracked = {
   first_name: string | null;
   city: string | null;
   delivery: string | null;
-  tracking: { number: string | null; url: string | null }[];
+  courier: string;
+  tracking_number: string;
+  tracking_url: string;
   paid: boolean;
-  items: { title: string; quantity: number; unit_price: number; thumbnail: string | null; tint: string | null; gift_wrapped: boolean }[];
+  items: { title: string; quantity: number; unit_price: number; image: string; tint: string; gift_wrapped: boolean }[];
   subtotal: number;
+  discount: number;
   shipping_total: number;
   total: number;
 };
@@ -59,6 +63,8 @@ function lastOrder(): { number: string; email: string } {
 }
 
 export function TrackOrder() {
+  const live = useCatalog().live;
+  const customerEmail = useAuth((s) => s.customer?.email);
   const [number, setNumber] = useState("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -77,20 +83,29 @@ export function TrackOrder() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
+  // Signed-in shoppers don't have to retype their email.
+  const [filled, setFilled] = useState(false);
+  if (customerEmail && !filled && !email) {
+    setFilled(true);
+    setEmail(customerEmail);
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sdk) return;
     setBusy(true);
     setError(undefined);
     try {
-      const res = await sdk.client.fetch<{ order: Tracked }>("/store/track-order", {
-        method: "POST",
-        body: { order_number: number, email },
-      });
-      setOrder(res.order);
-    } catch (err) {
+      const res = await fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_number: number, email }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOrder(undefined);
+        setError(data.message ?? "Something went wrong. Please try again.");
+      } else {
+        setOrder(data.order);
+      }
+    } catch {
       setOrder(undefined);
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError("We couldn't reach the shop. Please check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -101,7 +116,7 @@ export function TrackOrder() {
       <p className="font-hand text-3xl text-ribbon">where&apos;s my gift?</p>
       <h1 className="mt-1 text-[clamp(2.6rem,6vw,4.6rem)] leading-[0.95] font-extrabold">Track your order</h1>
 
-      {!medusaEnabled ? (
+      {!live ? (
         <p className="mt-8 rounded-2xl bg-sun-100 p-5 font-semibold">
           Order tracking switches on when the store goes live. Until then, orders placed here are only a preview.
         </p>
@@ -188,21 +203,17 @@ function Result({ order }: { order: Tracked }) {
         </ol>
       )}
 
-      {order.tracking.length > 0 && (
+      {(order.tracking_number || order.tracking_url) && (
         <div className="mt-8 rounded-2xl bg-lagoon-100 p-5">
-          <p className="text-sm font-bold text-lagoon-800">Courier tracking</p>
-          <ul className="mt-2 space-y-1">
-            {order.tracking.map((t, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                {t.number && <span className="font-display text-xl font-extrabold">{t.number}</span>}
-                {t.url && (
-                  <a href={t.url} target="_blank" rel="noreferrer" className="font-bold text-ribbon-700 underline underline-offset-4 hover:text-ribbon">
-                    Follow your parcel
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
+          <p className="text-sm font-bold text-lagoon-800">Courier tracking{order.courier ? `: ${order.courier}` : ""}</p>
+          <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {order.tracking_number && <span className="font-display text-xl font-extrabold">{order.tracking_number}</span>}
+            {/^https?:\/\//i.test(order.tracking_url) && (
+              <a href={order.tracking_url} target="_blank" rel="noreferrer noopener" className="font-bold text-ribbon-700 underline underline-offset-4 hover:text-ribbon">
+                Follow your parcel
+              </a>
+            )}
+          </p>
         </div>
       )}
 
@@ -211,7 +222,7 @@ function Result({ order }: { order: Tracked }) {
           {order.items.map((it, i) => (
             <li key={i} className="flex items-center gap-3">
               <span className="grid size-12 shrink-0 place-items-center rounded-xl" style={{ background: it.tint ?? "#F4E9D8" }}>
-                {it.thumbnail && <Image src={ownPhoto(it.thumbnail)} alt="" width={48} height={48} className="size-10 object-contain" />}
+                {it.image && <Image src={ownPhoto(it.image)} alt="" width={48} height={48} className="size-10 object-contain" />}
               </span>
               <span className="flex-1 text-sm font-semibold">
                 {it.title} <span className="text-ink-3">× {it.quantity}</span>
@@ -225,6 +236,12 @@ function Result({ order }: { order: Tracked }) {
             <dt className="text-ink-2">Subtotal</dt>
             <dd className="font-bold">{formatPrice(order.subtotal)}</dd>
           </div>
+          {order.discount > 0 && (
+            <div className="flex justify-between">
+              <dt className="text-ink-2">Discount</dt>
+              <dd className="font-bold text-lagoon-800">−{formatPrice(order.discount)}</dd>
+            </div>
+          )}
           <div className="flex justify-between">
             <dt className="text-ink-2">{order.delivery ?? "Delivery"}</dt>
             <dd className="font-bold">{order.shipping_total ? formatPrice(order.shipping_total) : "Free"}</dd>

@@ -1,6 +1,11 @@
-# Heritage Gift Wala — storefront
+# Heritage Gift Wala: the shop and its control panel
 
-The customer-facing shop for **heritagegiftwala.in**. Next.js 16 (App Router) + Tailwind v4 + Motion, built to run on **Vercel** against a **Medusa v2** backend (hosted on **Render**, Postgres on **Supabase**).
+One Next.js 16 app (App Router, Tailwind v4) on **Vercel**, with **Supabase** (Postgres + Storage) behind it. It holds:
+
+- **The shop** customers use: browse, bag, gift wrap, hamper builder, checkout (cash on delivery), accounts, order tracking.
+- **The owner's control panel** at `/admin`: products, prices, stock, photos, shelves, coupons, delivery fees, orders and courier tracking.
+
+There is no separate backend: the pages and the admin talk to Supabase's Postgres directly from the server.
 
 ```bash
 npm install
@@ -8,48 +13,43 @@ npm run dev          # http://localhost:3456
 npm run build        # production build
 ```
 
-## Preview mode vs live mode
+With no `DATABASE_URL` the shop runs in **preview mode** on the built-in catalog in `src/data/` (28 products). Everything works except real orders, accounts and the admin panel.
 
-With no Medusa env vars set, the store runs on the built-in catalog in `src/data/` (28 products photographed in the shop). Everything works: bag, wishlist, gift wrap, hamper builder, checkout. Checkout shows a "store preview" note and orders go nowhere.
+## Going live
 
-Set these (see `.env.example`) and the same UI reads products, categories, prices, stock, shipping options and payment providers from Medusa, and places real orders:
+Follow [../docs/DEPLOY.md](../docs/DEPLOY.md). The owner's day-to-day guide is [../docs/OWNER-GUIDE.md](../docs/OWNER-GUIDE.md).
 
-| Variable | Where it comes from |
+| Variable | What it is |
 | --- | --- |
-| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | Your Render service URL |
-| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Medusa admin → Settings → Publishable API keys |
-| `NEXT_PUBLIC_MEDUSA_REGION_ID` | Medusa admin → Settings → Regions → India (INR) |
-| `NEXT_PUBLIC_SITE_URL` | `https://heritagegiftwala.in` |
+| `DATABASE_URL` | Supabase "Transaction pooler" connection string (port 6543) |
+| `APP_SECRET` | 32+ random characters; hashes visitor IPs for rate limiting |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For product photo uploads. **Server-only secret.** |
+| `NEXT_PUBLIC_SITE_URL` | The shop's public address |
+| `RESEND_API_KEY`, `ORDER_ALERT_EMAIL` | Optional: email the owner when an order arrives |
 
-On the Medusa side, add the Vercel domain to `STORE_CORS`. The backend is in [`../backend`](../backend/README.md); its first boot prints the region id and publishable key.
+## How it is put together
 
-**Customer accounts:** shoppers can create an account, sign in, see their orders, edit their details and keep saved addresses (`/account`, `/account/login`, `/account/register`). It uses Medusa's built-in customer login, so no extra backend work is needed. The sign-in token is kept in the browser (not a cookie), which is why it works when the storefront and backend are on different domains. Checkout fills itself in for signed-in customers, and guests can still check out without an account. Password-reset-by-email isn't built yet: it needs an email provider connected to Medusa first.
+| Path | What |
+| --- | --- |
+| `db/migrations/` | The database schema (private `shop` schema, row level security on, nothing public). Orders, stock and coupons are enforced by SQL functions, so the browser can never set a price. |
+| `db/tests/` | `npm run test:db` (rules) and `npm run test:api` (a running site, including attacks) |
+| `scripts/` | `db:migrate`, `db:seed`, `admin:create` (run from your own computer) |
+| `src/app/(shop)/` | Customer pages |
+| `src/app/(admin)/admin/` | Owner pages and their server actions |
+| `src/app/api/` | Quote, order, tracking, account and photo-upload endpoints |
+| `src/lib/server/` | Database, sessions, passwords, rate limiting, validation (server-only) |
+| `src/proxy.ts` | Sends visitors without an admin cookie to the login page and sets no-store headers |
 
-**Order tracking:** `/track` takes an order number and the checkout email, and calls the backend's `POST /store/track-order`. The stages (placed, packed, on its way, delivered) follow what the owner does on the order in Medusa admin.
+### Security model in one page
 
-## Mapping the catalog into Medusa
+- **The database is closed.** Tables live in a `shop` schema Supabase doesn't expose, with row level security on and no policies. Only this app's server login can read or write.
+- **The browser only says what and how many.** `shop.price_cart` and `shop.place_order` (SQL) read prices, stock, delivery fees and coupon rules themselves and lock product rows, so two buyers can't take the last item and a price can't be edited in the page.
+- **Owner login:** scrypt-hashed passwords, random server-side session tokens (only their SHA-256 is stored), `HttpOnly` + `SameSite=Strict` + `__Host-` cookie, 12 h session with 4 h idle timeout, per-visitor rate limits, and the same message for "no such user" and "wrong password". Every admin page and action checks the session itself.
+- **Customer accounts** use the same session machinery. Every address and order query is filtered by the signed-in customer's id.
+- **Public endpoints** require a matching `Origin` and JSON, validate input with zod, rate-limit by hashed IP, and return generic errors.
+- **Uploads** are admin-only, ≤ 4 MB, and judged by their real bytes (PNG/JPEG/WebP), then stored under a random name.
+- **Headers:** `X-Frame-Options: DENY`, `nosniff`, HSTS, a CSP for framing/forms/base, no `X-Powered-By`; `/admin` and `/api` are `no-store` and `noindex`.
 
-The storefront reads shop-specific bits from **product metadata**, so the owner can edit them in Medusa admin:
+### Product tiles
 
-| Metadata key | Example | Used for |
-| --- | --- | --- |
-| `tint` | `#E6DEFF` | Background colour of the product tile |
-| `badge` | `Bestseller` | Sticker on the card |
-| `recipients` | `her,colleague` | Gift Finder, "For her" filters (`her, him, kids, parents, colleague, home`) |
-| `occasions` | `birthday,thank-you` | Gift Finder (`birthday, anniversary, festive, housewarming, thank-you, just-because`) |
-| `details` | `Insulated steel \| Hand wash` | "The details" list (separate points with `\|`) |
-| `rank` | `1` | Featured order |
-| `hidden` | `true` | Keep out of listings (used by the gift-wrap product) |
-
-Images: **thumbnail** = transparent cutout PNG (`public/products/*.png`), **image 2** = studio shot, **image 3** = the shelf photo.
-Categories use the handles in `src/data/categories.ts`; category metadata `tint` and `cover` (a product handle) style the sticker wall.
-Gift wrap is a product with handle `gift-wrap`; wrap paper, ribbon and note travel as line-item metadata.
-
-## Things to fill in
-
-`src/lib/site.ts` holds every store setting. The address, phone, map embed and Google rating come from the shop's Google Maps listing (Patan). Still to fill in: WhatsApp number and email (their buttons stay hidden until set), delivery fees, free-delivery threshold, gift-wrap price and dispatch time.
-Prices in `src/data/products.ts` are placeholders, except the two brass lamps (₹600 and ₹500, read off the shop's price stickers).
-
-## Product photos
-
-Every product photo was cut from the client's shop photos, redrawn as a studio shot with gpt-image (using the real photo as reference), then background-removed. The scripts live in `../design/pipeline/`.
+Each product has an image mode. *Cut-out on a coloured tile* (`contain`) suits transparent PNGs like the seeded photos; *Fill the tile* (`cover`) suits ordinary photos, so an owner's phone snap still looks tidy.

@@ -1,50 +1,59 @@
 # Running the shop: owner's guide
 
-Your control panel is the **Medusa admin**. It lives at `https://<your-backend>.onrender.com/app` (the same Render service that holds the shop). Sign in with the email and password set in `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+Your control panel is at **`/admin`** on your website (for example `https://www.heritagegiftwala.in/admin`). Sign in with the email and password you were given, then change the password under **My login**.
 
-Changes show on the website within about a minute.
+Changes appear on the website straight away.
 
-## Change a price
-**Products** → click the product → under **Variants** click the variant → **Prices** → edit the INR price → Save.
-To show a crossed-out "was" price, use **Price Lists** → create a sale list with the lower price.
+## The left menu
 
-## Update stock
-**Inventory** → click the item → edit **In stock** for "Heritage Gift Wala, Patan" → Save.
-When stock reaches 0 the product shows as sold out on the site. Every order lowers stock automatically.
+| Menu | What it is for |
+| --- | --- |
+| **Dashboard** | New orders, today's and this week's sales, products running low |
+| **Orders** | Every order, with search and filters. Open one to pack, ship and track it |
+| **Products** | Add products, change prices and stock, upload photos |
+| **Shelves** | The groups customers browse (Soft Toys, Lamps & Clocks…) |
+| **Coupons** | Discount codes |
+| **Delivery** | Delivery charges and the free-delivery limit |
+| **My login** | Change your password |
+
+## Change a price or the stock
+**Products**: type the new price or stock number in that product's row and press **Save**. Done.
 
 ## Add a new product
-**Products → Create**
-1. Title, subtitle, description and a handle (the web address, e.g. `plush-panda`).
-2. **Media**: upload photos. The **thumbnail** should be the transparent cut-out PNG, image 2 the studio shot, image 3 the shelf photo.
-3. **Organize**: pick the category (shelf).
-4. **Variants**: keep one variant called "Default", tick **Manage inventory**, set the INR price.
-5. **Metadata** (optional, makes the Gift Finder and tiles work): `tint` (e.g. `#E6DEFF`), `badge` (e.g. `New`), `recipients` (`her,him,kids,parents,colleague,home`), `occasions` (`birthday,anniversary,festive,housewarming,thank-you,just-because`), `details` (points separated by ` | `), `rank` (lower number shows first).
-6. Publish, then set its stock under **Inventory**.
+**Products → Add a product.**
+1. Give it a name, a price and how many you have.
+2. Upload a **main photo**. The preview on the right shows how it will look on the shop.
+3. Choose how the photo sits on its tile:
+   - **Fill the tile**: for ordinary photos, such as ones from your phone. They are cropped to fit.
+   - **Cut-out on a coloured tile**: only for photos with no background (a transparent PNG). Pick a tile colour you like.
+4. Tick the **shelf** it belongs to and, if you like, who it is for and what occasion (that feeds the Gift Finder).
+5. Press **Add product**. It is live straight away.
 
-To hide a product without deleting it, set its status to **Draft**.
+Set a product to **Draft** to hide it without deleting it. When stock reaches 0 the shop shows it as **sold out** by itself, and every order lowers the stock automatically.
 
-## Handle an order
-Customers get an order number (#12). Open it under **Orders**.
-1. **Fulfil items** when you've packed it. The customer's tracking page changes to *Packed*.
-2. **Mark as shipped** and enter the courier's **tracking number** (and tracking link, if any). The page changes to *On its way* and shows the number.
-3. **Mark as delivered** when it arrives.
-4. For cash on delivery, press **Capture payment** once you've been paid. The page then reads *Paid*.
+## When an order arrives
+You see it on the Dashboard and under **Orders** (and by email if that is switched on). Open it, then:
+1. **Mark as packed** when it is ready.
+2. Enter the **courier** and **tracking number** (and link, if there is one) and press *Save courier details*. The customer sees this on their tracking page.
+3. **Mark as shipped** when the courier takes it.
+4. **Mark as delivered** when it arrives, and **Mark as paid** once you've received the cash.
 
-To cancel an order, use the **⋯** menu on the order.
+**Cancel order** puts the items back into stock. A delivered order can't be cancelled.
 
-## Take an order yourself (phone, WhatsApp, in the shop)
-**Orders → Drafts → Create draft order**: pick products, add the customer's email and address, choose delivery, then **Send as order**. It joins the normal flow above, and the customer can track it with the order number and email you entered.
+## Take an order yourself
+**Orders → Take an order** (also on the Dashboard): for phone, WhatsApp or in-shop orders. Choose the products, enter the customer's details and place it. It follows the same rules as a website order: stock comes off and the customer can track it.
 
-## How customers track an order
-**Track order** in the site's menu → order number + the email used at checkout. They see Placed → Packed → On its way → Delivered, plus the courier number you entered.
+## Coupons
+**Coupons → New coupon**: a code (like `DIWALI10`), percent or rupees off, an optional minimum, a limit on uses and a last day. Pause or delete a coupon any time. A coupon discounts the items, not the delivery.
 
 ## Delivery charges
-**Settings → Locations & Shipping → Heritage Gift Wala, Patan → India** → edit *Standard* or *Express* prices. The "free over ₹999" rule is a conditional price on Standard delivery. If you change these, also update the numbers in `storefront/src/lib/site.ts` so the site's free-delivery bar and Help page agree.
+**Delivery**: standard price, express price, and the order value from which standard delivery is free (0 turns free delivery off).
+
+## How customers track an order
+**Track order** in the site menu: order number plus the email used at checkout. They see Placed → Packed → On its way → Delivered, and your courier details. Customers with an account also see their orders under **Account**.
 
 ## Good to know
-- Medusa does not send customer emails yet. Tell customers their number, or add an email provider later.
-- Payment is cash on delivery. Online payment (Razorpay/UPI) needs a payment provider added to the backend.
-- Add staff under **Settings → Users** (invite by email).
-
-## Customer accounts
-Customers can sign up on the website. Find them under **Customers** in the admin panel (name, email, saved addresses and their orders). Their order history on the site comes from the orders they placed while signed in. Customers who check out as guests have no account; you can still find their orders under **Orders**.
+- Payment is **cash on delivery** for now. Online payment (UPI, cards) can be added later.
+- Customers don't get automatic emails yet. They have their order number and the tracking page.
+- If a customer forgets their account password there is no reset-by-email yet. Ask the person who set up the site.
+- If you forget **your** password, ask the person who set up the site to reset it.

@@ -1,12 +1,12 @@
 import type { Product } from "@/lib/types";
 
-type Seed = Omit<Product, "id" | "image" | "studio" | "shelf" | "inStock"> & { shelfPhoto?: string };
+type Seed = Omit<Product, "id" | "image" | "studio" | "shelf" | "inStock" | "imageFit"> & { shelfPhoto?: string };
 
 /**
- * The built-in catalog, photographed from the shop floor. Used when no Medusa
- * backend is configured, and as the seed for the Medusa catalog.
+ * The built-in catalog, photographed from the shop floor. Used when no database
+ * is configured (preview mode), and as the seed for the shop's database.
  * Prices marked by the shop are real (brass lamps); the rest are placeholders
- * for the owner to confirm in Medusa admin.
+ * for the owner to confirm in the admin panel.
  */
 const seeds: Seed[] = [
   {
@@ -432,5 +432,6 @@ export const products: Product[] = seeds.map(({ shelfPhoto, ...s }) => ({
   image: s.hidden ? "" : `/products/${s.handle}.png`,
   studio: s.hidden ? undefined : `/products/studio/${s.handle}.jpg`,
   shelf: s.hidden ? undefined : `/products/shelf/${shelfPhoto ?? s.handle}.jpg`,
+  imageFit: "contain" as const,
   inStock: true,
 }));

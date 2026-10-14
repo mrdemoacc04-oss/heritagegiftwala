@@ -8,7 +8,6 @@ import { WishlistButton } from "./WishlistButton";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { useAddToBag } from "@/lib/useAddToBag";
 import { cx, formatPrice } from "@/lib/format";
-import { site } from "@/lib/site";
 import { papers, ribbons } from "@/lib/wrap";
 import type { Product } from "@/lib/types";
 
@@ -19,7 +18,8 @@ export function BuyBox({ product }: { product: Product }) {
   const [ribbon, setRibbon] = useState(ribbons[0].id);
   const [note, setNote] = useState("");
   const [added, setAdded] = useState(false);
-  const { giftWrap } = useCatalog();
+  const { giftWrap, settings } = useCatalog();
+  const freeFrom = settings.freeShippingFrom;
   const add = useAddToBag();
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -152,7 +152,7 @@ export function BuyBox({ product }: { product: Product }) {
         </li>
         <li className="flex items-center gap-2 rounded-2xl bg-white p-3">
           <TruckIcon size={22} weight="duotone" className="shrink-0 text-lagoon-600" />
-          {site.freeShippingThreshold > 0 ? `Free delivery over ${formatPrice(site.freeShippingThreshold)}` : "Delivered to your door"}
+          {freeFrom > 0 ? `Free delivery over ${formatPrice(freeFrom)}` : "Delivered to your door"}
         </li>
         <li className="flex items-center gap-2 rounded-2xl bg-white p-3">
           <StorefrontIcon size={22} weight="duotone" className="shrink-0 text-[#c58a00]" /> From a real shop

@@ -8,3 +8,6 @@ out
 next-env.d.ts
 .DS_Store
 .vercel
+
+# Photos uploaded while developing without Supabase Storage
+/public/uploads

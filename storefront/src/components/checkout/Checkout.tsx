@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { ArrowLeftIcon, CreditCardIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon, UserCircleIcon, MapPinIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon, UserCircleIcon, MapPinIcon, TagIcon, CreditCardIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
+import { useCatalog } from "@/components/providers/CatalogProvider";
 import { cartSubtotal, useCart } from "@/lib/store/cart";
-import { useAuth, type Customer } from "@/lib/store/auth";
-import { medusaEnabled, sdk } from "@/lib/medusa";
+import { useAuth, type Address } from "@/lib/store/auth";
 import { cx, formatPrice } from "@/lib/format";
-import { site } from "@/lib/site";
 import { paperById } from "@/lib/wrap";
 
 const STATES = [
@@ -22,23 +21,19 @@ const STATES = [
   "Uttar Pradesh", "Uttarakhand", "West Bengal",
 ];
 
-type Option = { id: string; label: string; detail: string; amount: number };
+type Ship = "standard" | "express";
 type Form = Record<"email" | "phone" | "name" | "address1" | "address2" | "city" | "state" | "pincode", string>;
 const empty: Form = { email: "", phone: "", name: "", address1: "", address2: "", city: "", state: "Gujarat", pincode: "" };
 
-const previewShipping = (subtotal: number): Option[] => [
-  {
-    id: "standard",
-    label: "Standard delivery",
-    detail: "3–6 working days",
-    amount: site.freeShippingThreshold > 0 && subtotal >= site.freeShippingThreshold ? 0 : site.shippingFlat,
-  },
-  { id: "express", label: "Express delivery", detail: "1–3 working days", amount: site.expressShipping },
-];
-const previewPayments: Option[] = [
-  { id: "online", label: "UPI, cards & netbanking", detail: "Pay securely online", amount: 0 },
-  { id: "cod", label: "Cash on delivery", detail: "Pay when it arrives", amount: 0 },
-];
+/** The shop's own prices for this bag, as worked out by the server. */
+type Quote = {
+  lines: { product_id: string; title: string; unit_price: number; quantity: number }[];
+  subtotal: number;
+  shipping_fee: number;
+  discount: number;
+  total: number;
+  coupon: string | null;
+};
 
 /** Preview orders get a short local reference, since no backend assigns one. */
 const previewOrderNo = () => `HGW-${Date.now().toString(36).slice(-6).toUpperCase()}`;
@@ -55,7 +50,7 @@ function validate(f: Form) {
 }
 
 /** What a saved address (or the customer's own details) can fill in on the form. */
-function fromAddress(a: NonNullable<Customer["addresses"]>[number]): Partial<Form> {
+function fromAddress(a: Address): Partial<Form> {
   return {
     name: [a.first_name, a.last_name].filter(Boolean).join(" "),
     address1: a.address_1 ?? "",
@@ -67,19 +62,35 @@ function fromAddress(a: NonNullable<Customer["addresses"]>[number]): Partial<For
   };
 }
 
+async function post<T>(url: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string; code?: string; productId?: string }> {
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return { ok: true, data: data as T };
+    return { ok: false, status: res.status, message: data.message ?? "Something went wrong. Please try again.", code: data.code, productId: data.product_id };
+  } catch {
+    return { ok: false, status: 0, message: "We couldn't reach the shop. Please check your connection and try again." };
+  }
+}
+
 export function Checkout() {
   const lines = useCart((s) => s.lines);
-  const cartId = useCart((s) => s.cartId);
   const clear = useCart((s) => s.clear);
+  const remove = useCart((s) => s.remove);
+  const reprice = useCart((s) => s.reprice);
   const router = useRouter();
+  const { live, settings } = useCatalog();
   const [form, setForm] = useState<Form>(empty);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
-  const [shipping, setShipping] = useState<Option[]>([]);
-  const [payments, setPayments] = useState<Option[]>(previewPayments);
-  const [ship, setShip] = useState("standard");
-  const [pay, setPay] = useState("online");
+  const [ship, setShip] = useState<Ship>("standard");
+  const [pay, setPay] = useState(live ? "cod" : "online");
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string>();
+  const [quote, setQuote] = useState<Quote>();
+  const [quoting, setQuoting] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<string | null>(null);
+  const [couponError, setCouponError] = useState<string>();
   const subtotal = cartSubtotal(lines);
   const customer = useAuth((s) => s.customer);
   const authReady = useAuth((s) => s.ready);
@@ -99,45 +110,63 @@ export function Checkout() {
     }));
   }
 
-  // Live shipping options and payment providers come from Medusa once it is connected.
+  const items = useMemo(() => lines.map((l) => ({ product_id: l.productId, quantity: l.quantity, wrap: l.wrap ?? null })), [lines]);
+  const itemsKey = JSON.stringify(items);
+
+  // Live shops re-price the bag on the server whenever it, the delivery speed or the coupon changes.
+  const request = useRef(0);
   useEffect(() => {
-    if (!medusaEnabled || !sdk || !cartId) return;
-    let live = true;
+    if (!live || !items.length) return;
+    const mine = ++request.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuoting(true);
     (async () => {
-      try {
-        const { cart } = await sdk.store.cart.retrieve(cartId);
-        const [{ shipping_options }, { payment_providers }] = await Promise.all([
-          sdk.store.fulfillment.listCartOptions({ cart_id: cartId }),
-          sdk.store.payment.listPaymentProviders({ region_id: cart.region_id! }),
-        ]);
-        if (!live) return;
-        const s = shipping_options.map((o) => ({ id: o.id, label: o.name, detail: "", amount: Number(o.amount ?? 0) }));
-        const p = payment_providers.map((pp) => ({
-          id: pp.id,
-          label: pp.id.includes("razorpay") ? "UPI, cards & netbanking" : pp.id === "pp_system_default" ? "Pay on delivery" : pp.id,
-          detail: "",
-          amount: 0,
-        }));
-        setShipping(s);
-        setPayments(p);
-        if (s[0]) setShip(s[0].id);
-        if (p[0]) setPay(p[0].id);
-      } catch {
-        setFailure("We couldn't load delivery options. Please refresh the page.");
+      const res = await post<Quote>("/api/quote", { items, shipping: ship, coupon });
+      if (mine !== request.current) return;
+      setQuoting(false);
+      if (res.ok) {
+        setQuote(res.data);
+        setFailure(undefined);
+        setCouponError(undefined);
+        reprice(Object.fromEntries(res.data.lines.map((l) => [l.product_id, { unit_price: l.unit_price, title: l.title }])));
+        return;
+      }
+      setQuote(undefined);
+      if (res.code === "BAD_COUPON") {
+        setCoupon(null);
+        setCouponError(res.message);
+      } else if (res.code === "UNKNOWN_PRODUCT" && res.productId) {
+        for (const l of useCart.getState().lines.filter((x) => x.productId === res.productId)) void remove(l.id);
+        setFailure("An item in your bag isn't available any more, so we took it out.");
+      } else {
+        setFailure(res.status === 400 ? "Some items in your bag are out of date. Please empty the bag and add them again." : res.message);
       }
     })();
-    return () => {
-      live = false;
-    };
-  }, [cartId]);
+    // The bag's contents are compared through itemsKey, so a re-render with the same lines does not re-price.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, itemsKey, ship, coupon]);
 
-  const shippingOptions = medusaEnabled ? shipping : previewShipping(subtotal);
-  const delivery = shippingOptions.find((o) => o.id === ship)?.amount ?? 0;
-  const total = subtotal + delivery;
+  const standardFee = settings.freeShippingFrom > 0 && subtotal >= settings.freeShippingFrom ? 0 : settings.shippingFlat;
+  const shippingOptions = [
+    { id: "standard" as const, label: "Standard delivery", detail: "3–6 working days", amount: quote && ship === "standard" ? quote.shipping_fee : standardFee },
+    { id: "express" as const, label: "Express delivery", detail: "1–3 working days", amount: settings.shippingExpress },
+  ];
+  const delivery = quote ? quote.shipping_fee : (shippingOptions.find((o) => o.id === ship)?.amount ?? 0);
+  const discount = quote?.discount ?? 0;
+  const shownSubtotal = quote?.subtotal ?? subtotal;
+  const total = quote ? quote.total : subtotal + delivery;
 
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
     if (errors[k]) setErrors((er) => ({ ...er, [k]: undefined }));
+  };
+
+  const applyCoupon = () => {
+    const code = couponInput.trim().toUpperCase();
+    setCouponError(undefined);
+    if (!code) return;
+    if (!/^[A-Z0-9_-]{3,24}$/.test(code)) return setCouponError("That doesn't look like a coupon code.");
+    setCoupon(code);
   };
 
   const place = async (e: React.FormEvent) => {
@@ -150,40 +179,30 @@ export function Checkout() {
     }
     setPlacing(true);
     setFailure(undefined);
-    const summary = { lines, subtotal, delivery, total, name: form.name, city: form.city, email: form.email.trim() };
 
-    try {
-      let orderNo: string;
-      if (medusaEnabled && sdk && cartId) {
-        const [first, ...rest] = form.name.trim().split(/\s+/);
-        const address = {
-          first_name: first,
-          last_name: rest.join(" "),
-          address_1: form.address1,
-          address_2: form.address2,
-          city: form.city,
-          province: form.state,
-          postal_code: form.pincode,
-          country_code: "in",
-          phone: form.phone,
-        };
-        await sdk.store.cart.update(cartId, { email: form.email, shipping_address: address, billing_address: address });
-        await sdk.store.cart.addShippingMethod(cartId, { option_id: ship });
-        const { cart } = await sdk.store.cart.retrieve(cartId);
-        await sdk.store.payment.initiatePaymentSession(cart, { provider_id: pay });
-        const done = await sdk.store.cart.complete(cartId);
-        if (done.type !== "order") throw new Error(done.error?.message ?? "Payment didn't go through.");
-        orderNo = `#${done.order.display_id}`;
-      } else {
-        orderNo = previewOrderNo();
+    let orderNo: string;
+    let finalTotal = total;
+    if (live) {
+      const res = await post<{ order: { number: number; total: number } }>("/api/orders", {
+        items,
+        shipping: ship,
+        coupon,
+        contact: { email: form.email, phone: form.phone, name: form.name, address1: form.address1, address2: form.address2, city: form.city, state: form.state, pincode: form.pincode },
+      });
+      if (!res.ok) {
+        setFailure(res.message);
+        setPlacing(false);
+        return;
       }
-      sessionStorage.setItem("hgw-last-order", JSON.stringify({ ...summary, orderNo, preview: !medusaEnabled }));
-      clear();
-      router.push("/order/confirmed");
-    } catch (err) {
-      setFailure(err instanceof Error ? err.message : "Something went wrong placing your order.");
-      setPlacing(false);
+      orderNo = `#${res.data.order.number}`;
+      finalTotal = res.data.order.total;
+    } else {
+      orderNo = previewOrderNo();
     }
+    const summary = { lines, subtotal: shownSubtotal, delivery, total: finalTotal, name: form.name, city: form.city, email: form.email.trim() };
+    sessionStorage.setItem("hgw-last-order", JSON.stringify({ ...summary, orderNo, preview: !live }));
+    clear();
+    router.push("/order/confirmed");
   };
 
   const wrapCount = useMemo(() => lines.filter((l) => l.handle === "gift-wrap").reduce((n, l) => n + l.quantity, 0), [lines]);
@@ -209,14 +228,14 @@ export function Checkout() {
         </Link>
         <h1 className="mt-3 text-5xl font-extrabold">Checkout</h1>
 
-        {!medusaEnabled && (
+        {!live && (
           <p className="mt-5 flex items-start gap-2.5 rounded-2xl bg-sun-100 p-4 text-sm font-semibold">
             <InfoIcon size={20} weight="fill" className="mt-0.5 shrink-0 text-[#b07d00]" />
             Store preview: you can try the whole checkout, but orders placed here aren&apos;t sent to the shop yet.
           </p>
         )}
 
-        {medusaEnabled && authReady && !customer && (
+        {live && authReady && !customer && (
           <Link
             href="/account/login?next=/checkout"
             className="group mt-5 flex items-center gap-3 rounded-2xl border-2 border-dashed border-ink/30 bg-white p-4 transition hover:border-ink"
@@ -246,7 +265,7 @@ export function Checkout() {
         <Step n={2} title="Delivery address">
           {(customer?.addresses?.length ?? 0) > 0 && (
             <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Your saved addresses">
-              {customer!.addresses!.map((a) => (
+              {customer!.addresses.map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -284,15 +303,19 @@ export function Checkout() {
             {shippingOptions.map((o, i) => (
               <Radio key={o.id} name="ship" checked={ship === o.id} onChange={() => setShip(o.id)} icon={i ? LightningIcon : TruckIcon} label={o.label} detail={o.detail} right={o.amount ? formatPrice(o.amount) : "Free"} />
             ))}
-            {medusaEnabled && !shippingOptions.length && <p className="text-sm text-ink-2">Loading delivery options…</p>}
           </div>
         </Step>
 
         <Step n={4} title="Payment">
           <div className="grid gap-3 sm:grid-cols-2">
-            {payments.map((o) => (
-              <Radio key={o.id} name="pay" checked={pay === o.id} onChange={() => setPay(o.id)} icon={o.id === "cod" || o.id === "pp_system_default" ? MoneyIcon : CreditCardIcon} label={o.label} detail={o.detail} />
-            ))}
+            {live ? (
+              <Radio name="pay" checked onChange={() => setPay("cod")} icon={MoneyIcon} label="Cash on delivery" detail="Pay when it arrives" />
+            ) : (
+              <>
+                <Radio name="pay" checked={pay === "online"} onChange={() => setPay("online")} icon={CreditCardIcon} label="UPI, cards & netbanking" detail="Pay securely online" />
+                <Radio name="pay" checked={pay === "cod"} onChange={() => setPay("cod")} icon={MoneyIcon} label="Cash on delivery" detail="Pay when it arrives" />
+              </>
+            )}
           </div>
         </Step>
       </div>
@@ -312,11 +335,43 @@ export function Checkout() {
               </li>
             ))}
           </ul>
+
+          {live && (
+            <div className="mt-5">
+              <label className="text-sm font-bold" htmlFor="coupon">Have a coupon?</label>
+              <div className="mt-1.5 flex gap-2">
+                <input
+                  id="coupon"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())}
+                  placeholder="Enter code"
+                  autoCapitalize="characters"
+                  maxLength={24}
+                  className="min-w-0 flex-1 rounded-2xl border-2 border-ink/15 bg-white px-4 py-2.5 font-semibold uppercase outline-none transition focus:border-ink"
+                />
+                <button type="button" onClick={applyCoupon} className="rounded-2xl border-2 border-ink px-4 font-bold hover:bg-sun">Apply</button>
+              </div>
+              {couponError && <p className="mt-1.5 text-sm font-semibold text-ribbon">{couponError}</p>}
+              {quote?.coupon && !couponError && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-lagoon-800">
+                  <TagIcon size={16} weight="fill" /> {quote.coupon} applied
+                </p>
+              )}
+            </div>
+          )}
+
           <dl className="mt-6 space-y-2 border-t-2 border-dashed border-line pt-4 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-2">Subtotal</dt>
-              <dd className="font-bold">{formatPrice(subtotal)}</dd>
+              <dd className="font-bold">{formatPrice(shownSubtotal)}</dd>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-2">Discount</dt>
+                <dd className="font-bold text-lagoon-800">−{formatPrice(discount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-ink-2">Delivery</dt>
               <dd className="font-bold">{delivery ? formatPrice(delivery) : "Free"}</dd>
@@ -334,13 +389,20 @@ export function Checkout() {
               {formatPrice(total)}
             </motion.span>
           </div>
-          {failure && <p className="mt-4 rounded-xl bg-ribbon-100 px-3 py-2 text-sm font-semibold text-ribbon-700">{failure}</p>}
+          {failure && (
+            <p className="mt-4 rounded-xl bg-ribbon-100 px-3 py-2 text-sm font-semibold text-ribbon-700">
+              {failure}{" "}
+              {failure.includes("out of date") && (
+                <button type="button" onClick={() => clear()} className="underline underline-offset-2">Empty the bag</button>
+              )}
+            </p>
+          )}
           <button
             type="submit"
-            disabled={placing || (medusaEnabled && !shippingOptions.length)}
+            disabled={placing || (live && (quoting || !quote))}
             className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-ribbon text-lg font-bold text-white shadow-[0_6px_0_var(--color-ribbon-700)] transition hover:bg-ribbon-700 active:translate-y-1 active:shadow-none disabled:opacity-60"
           >
-            {placing ? <SpinnerGapIcon size={20} weight="bold" className="animate-spin" /> : <LockSimpleIcon size={18} weight="bold" />}
+            {placing || quoting ? <SpinnerGapIcon size={20} weight="bold" className="animate-spin" /> : <LockSimpleIcon size={18} weight="bold" />}
             {placing ? "Placing your order…" : `Place order · ${formatPrice(total)}`}
           </button>
           <p className="mt-3 text-center text-xs text-ink-3">Fix rate pricing. What you see is what you pay.</p>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { EyeIcon, EyeSlashIcon, GiftIcon, MapPinIcon, PackageIcon, SpinnerGapIcon, InfoIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
-import { medusaEnabled } from "@/lib/medusa";
+import { useCatalog } from "@/components/providers/CatalogProvider";
 import { useAuth } from "@/lib/store/auth";
 import { cx } from "@/lib/format";
 
@@ -33,6 +33,7 @@ export function AuthPage({ initialMode }: { initialMode: Mode }) {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
   const { customer, ready, login, register, init } = useAuth();
+  const live = useCatalog().live;
   const [mode, setMode] = useState<Mode>(initialMode);
   const [f, setF] = useState<Fields>(blank);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
@@ -137,7 +138,7 @@ export function AuthPage({ initialMode }: { initialMode: Mode }) {
           </button>
         </p>
 
-        {!medusaEnabled && (
+        {!live && (
           <p className="mt-5 flex items-start gap-2.5 rounded-2xl bg-sun-100 p-4 text-sm font-semibold">
             <InfoIcon size={20} weight="fill" className="mt-0.5 shrink-0 text-[#b07d00]" />
             Store preview: accounts switch on once the shop&apos;s backend is connected.
@@ -192,7 +193,7 @@ export function AuthPage({ initialMode }: { initialMode: Mode }) {
 
           <button
             type="submit"
-            disabled={busy || !medusaEnabled}
+            disabled={busy || !live}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-ribbon text-lg font-bold text-white shadow-[0_6px_0_var(--color-ribbon-700)] transition hover:bg-ribbon-700 active:translate-y-1 active:shadow-none disabled:opacity-60"
           >
             {busy && <SpinnerGapIcon size={20} weight="bold" className="animate-spin" />}

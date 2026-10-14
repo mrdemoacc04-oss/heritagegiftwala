@@ -6,10 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { CheckIcon, MapPinIcon, PackageIcon, PencilSimpleIcon, PlusIcon, SignOutIcon, SpinnerGapIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
-import type { HttpTypes } from "@medusajs/types";
 import { Panda } from "@/components/brand/Panda";
-import { sdk } from "@/lib/medusa";
-import { useAuth } from "@/lib/store/auth";
+import { useAuth, type Address } from "@/lib/store/auth";
 import { cx, formatPrice, ownPhoto } from "@/lib/format";
 
 type Tab = "orders" | "details" | "addresses";
@@ -76,7 +74,7 @@ export function AccountHome() {
       </LayoutGroup>
 
       <div className="mt-8">
-        {tab === "orders" && <Orders email={customer.email} />}
+        {tab === "orders" && <Orders />}
         {tab === "details" && <Details />}
         {tab === "addresses" && <Addresses />}
       </div>
@@ -86,33 +84,32 @@ export function AccountHome() {
 
 /* ── Orders ─────────────────────────────────────────────────────────────── */
 
-type StoreOrder = HttpTypes.StoreOrder;
-
-const stageOf = (o: StoreOrder) => {
-  if (o.status === "canceled") return { label: "Cancelled", tone: "bg-ribbon-100 text-ribbon-700" };
-  switch (o.fulfillment_status) {
-    case "delivered":
-      return { label: "Delivered", tone: "bg-lagoon-100 text-lagoon-800" };
-    case "shipped":
-    case "partially_shipped":
-      return { label: "On its way", tone: "bg-sun-100 text-[#8a6100]" };
-    case "fulfilled":
-    case "partially_fulfilled":
-      return { label: "Packed", tone: "bg-sun-100 text-[#8a6100]" };
-    default:
-      return { label: "Placed", tone: "bg-white text-ink-2 border border-line" };
-  }
+type StoreOrder = {
+  number: string | number;
+  placed_at: string;
+  stage: "placed" | "packed" | "shipped" | "delivered" | "cancelled";
+  total: number;
+  items: { title: string; quantity: number; image: string; tint: string }[];
 };
 
-function Orders({ email }: { email: string }) {
+const STAGES: Record<StoreOrder["stage"], { label: string; tone: string }> = {
+  placed: { label: "Placed", tone: "bg-white text-ink-2 border border-line" },
+  packed: { label: "Packed", tone: "bg-sun-100 text-[#8a6100]" },
+  shipped: { label: "On its way", tone: "bg-sun-100 text-[#8a6100]" },
+  delivered: { label: "Delivered", tone: "bg-lagoon-100 text-lagoon-800" },
+  cancelled: { label: "Cancelled", tone: "bg-ribbon-100 text-ribbon-700" },
+};
+const stageOf = (o: StoreOrder) => STAGES[o.stage] ?? STAGES.placed;
+
+function Orders() {
   const [orders, setOrders] = useState<StoreOrder[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
-    sdk?.store.order
-      .list({ limit: 30, order: "-created_at", fields: "id,display_id,created_at,status,fulfillment_status,total,currency_code,*items" })
-      .then((r) => live && setOrders(r.orders))
+    fetch("/api/account/orders", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
+      .then((r: { orders: StoreOrder[] }) => live && setOrders(r.orders))
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
@@ -137,20 +134,20 @@ function Orders({ email }: { email: string }) {
     <ul className="space-y-4">
       {orders.map((o, i) => {
         const stage = stageOf(o);
-        const items = (o.items ?? []).filter(Boolean);
+        const items = o.items ?? [];
         return (
-          <motion.li key={o.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="rounded-[2rem] border-2 border-ink bg-paper p-5 shadow-[5px_5px_0_var(--color-ink)] sm:p-6">
+          <motion.li key={o.number} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="rounded-[2rem] border-2 border-ink bg-paper p-5 shadow-[5px_5px_0_var(--color-ink)] sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-display text-2xl font-extrabold">Order #{o.display_id}</p>
-                <p className="text-sm text-ink-2">{new Date(o.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
+                <p className="font-display text-2xl font-extrabold">Order #{o.number}</p>
+                <p className="text-sm text-ink-2">{new Date(o.placed_at).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
               </div>
               <span className={cx("rounded-full px-4 py-1.5 text-sm font-bold", stage.tone)}>{stage.label}</span>
             </div>
             <ul className="mt-4 flex flex-wrap gap-2">
-              {items.map((it) => (
-                <li key={it.id} className="relative grid size-16 place-items-center rounded-2xl bg-cream" title={`${it.product_title ?? it.title} × ${it.quantity}`}>
-                  {it.thumbnail && <Image src={ownPhoto(it.thumbnail)} alt={it.product_title ?? it.title} width={56} height={56} className="size-12 object-contain" />}
+              {items.map((it, n) => (
+                <li key={n} className="relative grid size-16 place-items-center rounded-2xl" style={{ background: it.tint || "#fff8ee" }} title={`${it.title} × ${it.quantity}`}>
+                  {it.image && <Image src={ownPhoto(it.image)} alt={it.title} width={56} height={56} className="size-12 object-contain" />}
                   {it.quantity > 1 && <span className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-ink text-[11px] font-bold text-white">{it.quantity}</span>}
                 </li>
               ))}
@@ -158,9 +155,9 @@ function Orders({ email }: { email: string }) {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t-2 border-dashed border-line pt-4">
               <p>
                 <span className="text-ink-2">Total </span>
-                <span className="font-display text-xl font-extrabold">{formatPrice(Number(o.total))}</span>
+                <span className="font-display text-xl font-extrabold">{formatPrice(o.total)}</span>
               </p>
-              <Link href={`/track?order=${o.display_id}&email=${encodeURIComponent(email)}`} className="rounded-full bg-sun px-5 py-2 font-bold shadow-[0_3px_0_var(--color-ink)] transition hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-none">
+              <Link href={`/track?order=${o.number}`} className="rounded-full bg-sun px-5 py-2 font-bold shadow-[0_3px_0_var(--color-ink)] transition hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-none">
                 Track order
               </Link>
             </div>
@@ -174,7 +171,7 @@ function Orders({ email }: { email: string }) {
 /* ── Details ────────────────────────────────────────────────────────────── */
 
 function Details() {
-  const { customer, setCustomer } = useAuth();
+  const { customer, refresh } = useAuth();
   const [first, setFirst] = useState(customer?.first_name ?? "");
   const [last, setLast] = useState(customer?.last_name ?? "");
   const [phone, setPhone] = useState(customer?.phone ?? "");
@@ -184,12 +181,11 @@ function Details() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sdk) return;
     setState("saving");
     try {
-      await sdk.store.customer.update({ first_name: first.trim(), last_name: last.trim(), phone: phone.trim() || undefined });
-      const { customer: fresh } = await sdk.store.customer.retrieve({ fields: "+addresses" });
-      setCustomer(fresh);
+      const res = await fetch("/api/account/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ first_name: first.trim(), last_name: last.trim(), phone: phone.trim() }) });
+      if (!res.ok) throw new Error("save failed");
+      await refresh();
       setState("saved");
       setTimeout(() => setState("idle"), 2200);
     } catch {
@@ -225,7 +221,6 @@ function Details() {
 
 /* ── Addresses ──────────────────────────────────────────────────────────── */
 
-type Address = HttpTypes.StoreCustomerAddress;
 type AddrForm = { first_name: string; last_name: string; phone: string; address_1: string; address_2: string; city: string; province: string; postal_code: string; is_default_shipping: boolean };
 const blankAddr = (c?: { first_name?: string | null; last_name?: string | null; phone?: string | null }): AddrForm => ({
   first_name: c?.first_name ?? "",
@@ -247,19 +242,18 @@ function Addresses() {
 
   const remove = useCallback(
     async (id: string) => {
-      if (!sdk) return;
-      await sdk.store.customer.deleteAddress(id);
+      await fetch(`/api/account/addresses/${id}`, { method: "DELETE" });
       await refresh();
     },
     [refresh],
   );
 
   if (!customer) return null;
-  const addresses = customer.addresses ?? [];
+  const addresses = customer.addresses;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editing || !sdk) return;
+    if (!editing) return;
     const f = editing.form;
     if (!f.first_name.trim() || !f.address_1.trim() || !f.city.trim() || !/^\d{6}$/.test(f.postal_code)) {
       setError("Please add a name, street address, city and a 6-digit PIN code.");
@@ -268,13 +262,13 @@ function Addresses() {
     setBusy(true);
     setError(undefined);
     try {
-      const body = { ...f, country_code: "in", address_2: f.address_2 || undefined, phone: f.phone || undefined };
-      if (editing.id) await sdk.store.customer.updateAddress(editing.id, body);
-      else await sdk.store.customer.createAddress(body);
+      const body = { first_name: f.first_name, last_name: f.last_name, phone: f.phone, address_1: f.address_1, address_2: f.address_2, city: f.city, province: f.province, postal_code: f.postal_code, is_default: f.is_default_shipping };
+      const res = await fetch(editing.id ? `/api/account/addresses/${editing.id}` : "/api/account/addresses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? "failed");
       await refresh();
       setEditing(null);
-    } catch {
-      setError("We couldn't save that address. Please try again.");
+    } catch (e) {
+      setError(e instanceof Error && e.message !== "failed" ? e.message : "We couldn't save that address. Please try again.");
     } finally {
       setBusy(false);
     }

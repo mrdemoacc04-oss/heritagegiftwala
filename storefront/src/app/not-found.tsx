@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Panda } from "@/components/brand/Panda";
+import { ShopFrame } from "@/components/layout/ShopFrame";
 
 export default function NotFound() {
   return (
+    <ShopFrame>
     <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
       <Panda className="w-40" />
       <p className="mt-6 font-hand text-3xl text-ribbon">404, oops</p>
@@ -13,5 +15,6 @@ export default function NotFound() {
         <Link href="/shop" className="rounded-full border-2 border-ink px-6 py-3 font-bold hover:bg-sun">Shop all gifts</Link>
       </div>
     </div>
+    </ShopFrame>
   );
 }

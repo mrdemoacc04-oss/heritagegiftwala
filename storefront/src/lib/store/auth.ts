@@ -1,11 +1,30 @@
 "use client";
 
 import { create } from "zustand";
-import type { HttpTypes } from "@medusajs/types";
-import { medusaEnabled, sdk } from "@/lib/medusa";
 import { useCart } from "@/lib/store/cart";
 
-export type Customer = HttpTypes.StoreCustomer;
+export type Address = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  address_1: string;
+  address_2: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  is_default_shipping: boolean;
+};
+
+export type Customer = {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  created_at: string;
+  addresses: Address[];
+};
 
 export type RegisterInput = { firstName: string; lastName: string; email: string; phone?: string; password: string };
 
@@ -21,47 +40,39 @@ type AuthState = {
   setCustomer: (customer: Customer) => void;
 };
 
-/** The SDK keeps the sign-in token here (JWT mode), so we can skip the network call when nobody is signed in. */
-const hasToken = () => {
-  try {
-    return Boolean(window.localStorage.getItem("medusa_auth_token"));
-  } catch {
-    return false;
-  }
-};
-
-const CUSTOMER_FIELDS = "+addresses";
+/** The server also drops a harmless, readable "hgw_in" hint when someone signs in, so signed-out visitors cost no request. */
+const likelySignedIn = () => typeof document !== "undefined" && /(?:^|;\s*)hgw_in=1/.test(document.cookie);
 
 async function fetchCustomer(): Promise<Customer | null> {
-  if (!sdk || !hasToken()) return null;
   try {
-    const { customer } = await sdk.store.customer.retrieve({ fields: CUSTOMER_FIELDS });
-    return customer;
+    const res = await fetch("/api/account/me", { cache: "no-store" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { customer: Customer | null }).customer;
   } catch {
-    // Expired or invalid token: treat as signed out.
-    try {
-      await sdk.auth.logout();
-    } catch {}
     return null;
   }
 }
 
-/** Turns the backend's technical errors into something a shopper can act on. */
-function friendly(e: unknown, fallback: string) {
-  const msg = e instanceof Error ? e.message : "";
-  if (/invalid email or password|unauthorized/i.test(msg)) return "That email and password don't match. Please try again.";
-  if (/already exists|already registered|duplicate/i.test(msg)) return "An account with this email already exists. Try signing in instead.";
-  if (/failed to fetch|networkerror|load failed/i.test(msg)) return "We couldn't reach the shop right now. Please check your connection and try again.";
-  return msg && msg.length < 140 ? msg : fallback;
+async function send(url: string, body: unknown, fallback: string) {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new Error("We couldn't reach the shop right now. Please check your connection and try again.");
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(typeof data.message === "string" ? data.message : fallback);
+  }
 }
 
 export const useAuth = create<AuthState>()((set, get) => ({
   customer: null,
-  ready: !medusaEnabled,
+  ready: false,
 
   async init() {
-    if (!medusaEnabled || get().ready) return;
-    set({ customer: await fetchCustomer(), ready: true });
+    if (get().ready) return;
+    set({ customer: likelySignedIn() ? await fetchCustomer() : null, ready: true });
   },
 
   async refresh() {
@@ -69,51 +80,25 @@ export const useAuth = create<AuthState>()((set, get) => ({
   },
 
   async login(email, password) {
-    if (!sdk) throw new Error("Accounts are available once the shop's backend is connected.");
-    try {
-      await sdk.auth.login("customer", "emailpass", { email: email.trim().toLowerCase(), password });
-    } catch (e) {
-      throw new Error(friendly(e, "We couldn't sign you in. Please try again."));
-    }
+    await send("/api/account/login", { email, password }, "We couldn't sign you in. Please try again.");
     const customer = await fetchCustomer();
     if (!customer) throw new Error("We couldn't sign you in. Please try again.");
-    // A bag started as a guest follows the shopper into their account.
-    const cartId = useCart.getState().cartId;
-    if (cartId) {
-      try {
-        await sdk.store.cart.transferCart(cartId);
-      } catch {
-        // The bag may already belong to this customer, or have been completed; nothing to do.
-      }
-    }
     set({ customer, ready: true });
   },
 
   async register({ firstName, lastName, email, phone, password }) {
-    if (!sdk) throw new Error("Accounts are available once the shop's backend is connected.");
-    const address = email.trim().toLowerCase();
-    try {
-      const token = await sdk.auth.register("customer", "emailpass", { email: address, password });
-      if (typeof token !== "string") throw new Error("We couldn't create your account. Please try again.");
-      // The registration token only proves the email and password. It creates the customer record;
-      // signing in afterwards gives the token that actually belongs to the new customer.
-      await sdk.store.customer.create(
-        { email: address, first_name: firstName.trim(), last_name: lastName.trim(), phone: phone?.trim() || undefined },
-        {},
-        { Authorization: `Bearer ${token}` },
-      );
-    } catch (e) {
-      throw new Error(friendly(e, "We couldn't create your account. Please try again."));
-    }
-    await get().login(address, password);
+    await send("/api/account/register", { first_name: firstName, last_name: lastName, email, phone: phone ?? "", password }, "We couldn't create your account. Please try again.");
+    const customer = await fetchCustomer();
+    if (!customer) throw new Error("We couldn't create your account. Please try again.");
+    set({ customer, ready: true });
   },
 
   async logout() {
     try {
-      await sdk?.auth.logout();
+      await fetch("/api/account/logout", { method: "POST" });
     } catch {}
     set({ customer: null });
-    // The bag belongs to the signed-in customer; the next shopper on this browser starts fresh.
+    // The bag stays on this device for the next shopper only if they were signed out.
     useCart.getState().clear();
   },
 

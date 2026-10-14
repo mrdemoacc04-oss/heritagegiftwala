@@ -17,7 +17,7 @@ export type Product = {
   title: string;
   subtitle: string;
   description: string;
-  /** Price in rupees (Medusa v2 stores major units). */
+  /** Price in rupees (whole rupees). */
   price: number;
   compareAtPrice?: number;
   categories: string[];
@@ -32,8 +32,8 @@ export type Product = {
   tint: string;
   badge?: string;
   details: string[];
-  /** Medusa variant to add to cart. Absent in preview mode. */
-  variantId?: string;
+  /** "contain" for transparent cut-outs on the tinted tile; "cover" for ordinary photos that fill it. */
+  imageFit: "contain" | "cover";
   inStock: boolean;
   /** Ordering weight for "Featured" sort and bestseller rails. */
   rank: number;
@@ -48,7 +48,7 @@ export type WrapChoice = {
 };
 
 export type CartLine = {
-  /** Local key — the Medusa line item id once synced. */
+  /** Local key for this line in the bag. */
   id: string;
   productId: string;
   handle: string;
@@ -57,6 +57,13 @@ export type CartLine = {
   tint: string;
   price: number;
   quantity: number;
-  variantId?: string;
   wrap?: WrapChoice;
+};
+
+/** Delivery fees the owner can change from the admin panel. */
+export type ShopSettings = {
+  shippingFlat: number;
+  shippingExpress: number;
+  /** Standard delivery is free from this subtotal; 0 switches the offer off. */
+  freeShippingFrom: number;
 };

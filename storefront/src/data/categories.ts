@@ -1,6 +1,6 @@
 import type { Category } from "@/lib/types";
 
-/** Collections, named after the shelves in the shop. Mirrors Medusa product categories by handle. */
+/** Collections, named after the shelves in the shop. Seeds the shop's database (`npm run db:seed`); after that the owner edits shelves in the admin panel. */
 export const categories: Category[] = [
   { handle: "gift-hampers", title: "Gift Hampers", blurb: "Ready-to-gift bundles and boxes, bowed and done.", cover: "hamper-just-for-you", tint: "#FFD6DE" },
   { handle: "soft-toys", title: "Soft Toys", blurb: "Squishy, huggable and impossible to put down.", cover: "plush-sunflower-bunny", tint: "#FFE0EC" },

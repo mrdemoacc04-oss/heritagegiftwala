@@ -10,7 +10,6 @@ import { useCatalog } from "@/components/providers/CatalogProvider";
 import { cartCount, cartSubtotal, useCart } from "@/lib/store/cart";
 import { useUI } from "@/lib/store/ui";
 import { formatPrice } from "@/lib/format";
-import { site } from "@/lib/site";
 import { paperById, ribbonById } from "@/lib/wrap";
 import { useAddToBag } from "@/lib/useAddToBag";
 import type { CartLine } from "@/lib/types";
@@ -19,11 +18,10 @@ export function CartDrawer() {
   const open = useUI((s) => s.cartOpen);
   const setOpen = useUI((s) => s.setCartOpen);
   const lines = useCart((s) => s.lines);
-  const busy = useCart((s) => s.busy);
-  const error = useCart((s) => s.error);
   const closeRef = useRef<HTMLButtonElement>(null);
   const count = cartCount(lines);
   const subtotal = cartSubtotal(lines);
+  const freeFrom = useCatalog().settings.freeShippingFrom;
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +72,7 @@ export function CartDrawer() {
               <EmptyBag onClose={() => setOpen(false)} />
             ) : (
               <>
-                {site.freeShippingThreshold > 0 && <ShippingMeter subtotal={subtotal} />}
+                {freeFrom > 0 && <ShippingMeter subtotal={subtotal} goal={freeFrom} />}
                 <div data-lenis-prevent className="flex-1 overflow-y-auto overscroll-contain px-6 pb-4">
                   <ul className="space-y-3">
                     <AnimatePresence initial={false}>
@@ -86,7 +84,6 @@ export function CartDrawer() {
                   <AddOns />
                 </div>
                 <footer className="border-t-2 border-dashed border-line px-6 pt-4 pb-6">
-                  {error && <p className="mb-3 rounded-xl bg-ribbon-100 px-3 py-2 text-sm text-ribbon-700">{error}</p>}
                   <div className="flex items-baseline justify-between">
                     <span className="text-ink-2">Subtotal</span>
                     <span className="font-display text-2xl font-extrabold">{formatPrice(subtotal)}</span>
@@ -95,7 +92,6 @@ export function CartDrawer() {
                   <Link
                     href="/checkout"
                     onClick={() => setOpen(false)}
-                    aria-disabled={busy}
                     className="group mt-4 flex h-14 items-center justify-center gap-2 rounded-full bg-ribbon text-lg font-bold text-white shadow-[0_6px_0_var(--color-ribbon-700)] transition active:translate-y-1 active:shadow-[0_2px_0_var(--color-ribbon-700)]"
                   >
                     Checkout
@@ -111,8 +107,7 @@ export function CartDrawer() {
   );
 }
 
-function ShippingMeter({ subtotal }: { subtotal: number }) {
-  const goal = site.freeShippingThreshold;
+function ShippingMeter({ subtotal, goal }: { subtotal: number; goal: number }) {
   const pct = Math.min(100, (subtotal / goal) * 100);
   const done = subtotal >= goal;
   return (

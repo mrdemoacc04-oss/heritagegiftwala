@@ -2,69 +2,79 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { cache } from "react";
-import type { HttpTypes } from "@medusajs/types";
+import { unstable_cache } from "next/cache";
 import { categories as localCategories } from "@/data/categories";
 import { products as localProducts } from "@/data/products";
-import { medusaEnabled, regionId, sdk } from "./medusa";
-import { ownPhoto } from "./format";
-import type { Category, Occasion, Product, Recipient } from "./types";
+import { dbEnabled, sql } from "@/lib/server/db";
+import { site } from "./site";
+import type { Category, Occasion, Product, Recipient, ShopSettings } from "./types";
 
-const PRODUCT_FIELDS =
-  "*variants.calculated_price,+variants.inventory_quantity,+variants.manage_inventory,*categories,*images,+metadata";
+/** Cache tag the admin panel expires whenever the owner changes products, categories or delivery fees. */
+export const CATALOG_TAG = "catalog";
+const REFRESH_SECONDS = 300;
 
-const list = (v: unknown, sep: string) =>
-  typeof v === "string" ? v.split(sep).map((s) => s.trim()).filter(Boolean) : Array.isArray(v) ? (v as string[]) : [];
-const csv = (v: unknown) => list(v, ",");
+type ProductRow = {
+  id: string; handle: string; title: string; subtitle: string; description: string; price: number; compare_at: number | null;
+  categories: string[]; recipients: string[]; occasions: string[]; details: string[]; tint: string; badge: string; rank: number;
+  is_new: boolean; hidden: boolean; track_stock: boolean; stock: number; image: string; studio: string; shelf: string; image_fit: "contain" | "cover";
+};
 
-/**
- * Medusa product → storefront product. Shop-specific fields (tint, badge,
- * recipients, occasions, details) live in product metadata so the owner can
- * edit them from Medusa admin.
- */
-function fromMedusa(p: HttpTypes.StoreProduct, index: number): Product {
-  const m = (p.metadata ?? {}) as Record<string, unknown>;
-  const variant = p.variants?.[0];
-  const price = variant?.calculated_price;
-  const images = (p.images ?? []).map((i) => ownPhoto(i.url));
-  const managed = variant?.manage_inventory ?? false;
-  return {
-    id: p.id,
-    handle: p.handle ?? p.id,
-    title: p.title,
-    subtitle: p.subtitle ?? "",
-    description: p.description ?? "",
-    price: Number(price?.calculated_amount ?? 0),
-    compareAtPrice:
-      price?.original_amount && price.original_amount > (price.calculated_amount ?? 0) ? Number(price.original_amount) : undefined,
-    categories: (p.categories ?? []).map((c) => c.handle),
-    recipients: csv(m.recipients) as Recipient[],
-    occasions: csv(m.occasions) as Occasion[],
-    image: ownPhoto(p.thumbnail) || images[0] || "",
-    studio: images[1],
-    shelf: images[2],
-    tint: typeof m.tint === "string" ? m.tint : "#F4E9D8",
-    badge: typeof m.badge === "string" ? m.badge : undefined,
-    details: list(m.details, "|"),
-    variantId: variant?.id,
-    inStock: !managed || (variant?.inventory_quantity ?? 0) > 0,
-    rank: m.rank !== undefined && m.rank !== "" && Number.isFinite(Number(m.rank)) ? Number(m.rank) : index + 1,
-    isNew: m.is_new === true || m.is_new === "true",
-    hidden: m.hidden === true || m.hidden === "true",
-  };
-}
+const fromRow = (r: ProductRow): Product => ({
+  id: r.id,
+  handle: r.handle,
+  title: r.title,
+  subtitle: r.subtitle,
+  description: r.description,
+  price: r.price,
+  compareAtPrice: r.compare_at && r.compare_at > r.price ? r.compare_at : undefined,
+  categories: r.categories,
+  recipients: r.recipients as Recipient[],
+  occasions: r.occasions as Occasion[],
+  image: r.image,
+  studio: r.studio || undefined,
+  shelf: r.shelf || undefined,
+  tint: r.tint,
+  badge: r.badge || undefined,
+  details: r.details,
+  imageFit: r.image_fit,
+  inStock: !r.track_stock || r.stock > 0,
+  rank: r.rank,
+  isNew: r.is_new,
+  hidden: r.hidden,
+});
+
+const liveProducts = unstable_cache(
+  async () => (await sql<ProductRow>("select * from shop.products where status = 'active' order by rank, title")).map(fromRow),
+  ["catalog-products"],
+  { tags: [CATALOG_TAG], revalidate: REFRESH_SECONDS },
+);
+
+const liveCategories = unstable_cache(
+  async () => {
+    const rows = await sql<{ handle: string; title: string; blurb: string; cover: string; tint: string }>("select handle, title, blurb, cover, tint from shop.categories order by sort, title");
+    return rows.map((c): Category => ({ handle: c.handle, title: c.title, blurb: c.blurb, cover: c.cover, tint: c.tint }));
+  },
+  ["catalog-categories"],
+  { tags: [CATALOG_TAG], revalidate: REFRESH_SECONDS },
+);
+
+const liveSettings = unstable_cache(
+  async () => {
+    const [r] = await sql<{ shipping_flat: number; shipping_express: number; free_shipping_from: number }>("select shipping_flat, shipping_express, free_shipping_from from shop.settings where id = 1");
+    return { shippingFlat: r.shipping_flat, shippingExpress: r.shipping_express, freeShippingFrom: r.free_shipping_from } satisfies ShopSettings;
+  },
+  ["catalog-settings"],
+  { tags: [CATALOG_TAG], revalidate: REFRESH_SECONDS },
+);
 
 const publicFile = (src?: string) => (src && fs.existsSync(path.join(process.cwd(), "public", src)) ? src : undefined);
 
 export const getAllProducts = cache(async (): Promise<Product[]> => {
-  if (!medusaEnabled || !sdk) {
-    // Gallery frames that haven't been photographed yet are left out rather than shown broken.
+  if (!dbEnabled()) {
+    // Preview mode: no database configured. Gallery frames that haven't been photographed yet are left out rather than shown broken.
     return localProducts.map((p) => ({ ...p, studio: publicFile(p.studio), shelf: publicFile(p.shelf) }));
   }
-  const { products } = await sdk.client.fetch<HttpTypes.StoreProductListResponse>("/store/products", {
-    query: { region_id: regionId, fields: PRODUCT_FIELDS, limit: 200 },
-    next: { revalidate: 60, tags: ["products"] },
-  });
-  return products.map(fromMedusa);
+  return liveProducts();
 });
 
 /** Everything shoppers can browse (the gift-wrap service product stays out of listings). */
@@ -72,23 +82,14 @@ export const getProducts = cache(async () => (await getAllProducts()).filter((p)
 
 export const getProduct = cache(async (handle: string) => (await getAllProducts()).find((p) => p.handle === handle));
 
-export const getCategories = cache(async (): Promise<Category[]> => {
-  if (!medusaEnabled || !sdk) return localCategories;
-  const { product_categories } = await sdk.store.category.list({ fields: "id,name,handle,description,metadata", limit: 100 });
-  return product_categories.map((c) => {
-    const m = (c.metadata ?? {}) as Record<string, unknown>;
-    const local = localCategories.find((l) => l.handle === c.handle);
-    return {
-      handle: c.handle,
-      title: c.name,
-      blurb: c.description || local?.blurb || "",
-      cover: typeof m.cover === "string" ? m.cover : local?.cover ?? "",
-      tint: typeof m.tint === "string" ? m.tint : local?.tint ?? "#F4E9D8",
-    };
-  });
-});
+export const getCategories = cache(async (): Promise<Category[]> => (dbEnabled() ? liveCategories() : localCategories));
 
 export const getCategory = cache(async (handle: string) => (await getCategories()).find((c) => c.handle === handle));
+
+export const getSettings = cache(
+  async (): Promise<ShopSettings> =>
+    dbEnabled() ? liveSettings() : { shippingFlat: site.shippingFlat, shippingExpress: site.expressShipping, freeShippingFrom: site.freeShippingThreshold },
+);
 
 export async function getProductsInCategory(handle: string) {
   return (await getProducts()).filter((p) => p.categories.includes(handle));
