@@ -1,6 +1,12 @@
 # Running the shop: owner's guide
 
-Your control panel is at **`/admin`** on your website (for example `https://www.heritagegiftwala.in/admin`). Sign in with the email and password you were given, then change the password under **My login**.
+Your control panel is at **`/admin`** on your website (for example `https://www.heritagegiftwala.in/admin`).
+
+**First sign-in:** use the email and temporary password you were given. The panel makes you choose your own password and set up **two-step sign-in** (scan a QR code with Google Authenticator or a similar app, then type the 6-digit code). It then shows **10 recovery codes: save them somewhere safe**. Each works once if you lose your phone.
+
+**Every sign-in after that:** email and password, then the 6-digit code from the app.
+
+**Forgot your password?** Use the link on the sign-in page. A reset link is emailed to you; it works once and lasts 30 minutes. You will still need your app code afterwards.
 
 Changes appear on the website straight away.
 
@@ -14,7 +20,7 @@ Changes appear on the website straight away.
 | **Shelves** | The groups customers browse (Soft Toys, Lamps & Clocks…) |
 | **Coupons** | Discount codes |
 | **Delivery** | Delivery charges and the free-delivery limit |
-| **My login** | Change your password |
+| **My login** | Change your password, manage two-step sign-in and recovery codes, sign out of every device, and see recent sign-ins (a good place to spot anything odd) |
 
 ## Change a price or the stock
 **Products**: type the new price or stock number in that product's row and press **Save**. Done.
@@ -46,6 +52,8 @@ You see it on the Dashboard and under **Orders** (and by email if that is switch
 ## Coupons
 **Coupons → New coupon**: a code (like `DIWALI10`), percent or rupees off, an optional minimum, a limit on uses and a last day. Pause or delete a coupon any time. A coupon discounts the items, not the delivery.
 
+By default each coupon works **once per customer** (the same email or phone number can't use it twice, even if they add dots or `+something` to the email). Untick *One use per customer* for a code you want people to be able to reuse. Free delivery is judged on the amount the customer pays after the coupon.
+
 ## Delivery charges
 **Delivery**: standard price, express price, and the order value from which standard delivery is free (0 turns free delivery off).
 
@@ -56,4 +64,5 @@ You see it on the Dashboard and under **Orders** (and by email if that is switch
 - Payment is **cash on delivery** for now. Online payment (UPI, cards) can be added later.
 - Customers don't get automatic emails yet. They have their order number and the tracking page.
 - If a customer forgets their account password there is no reset-by-email yet. Ask the person who set up the site.
-- If you forget **your** password, ask the person who set up the site to reset it.
+- Lost your phone? Use one of your recovery codes at the code step, then set up two-step sign-in again under **My login**. If you have no codes either, the person who set up the site can reset it from their computer.
+- If you see a sign-in you don't recognise under **My login → Recent activity**, press **Sign out everywhere** and change your password.

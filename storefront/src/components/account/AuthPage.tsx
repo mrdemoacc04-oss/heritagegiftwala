@@ -9,13 +9,11 @@ import { Panda } from "@/components/brand/Panda";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { useAuth } from "@/lib/store/auth";
 import { cx } from "@/lib/format";
+import { safeNext } from "@/lib/safe-next";
 
 type Mode = "login" | "register";
 type Fields = { firstName: string; lastName: string; email: string; phone: string; password: string };
 const blank: Fields = { firstName: "", lastName: "", email: "", phone: "", password: "" };
-
-/** Only same-site paths are honoured, so a crafted link can't send shoppers elsewhere after signing in. */
-const safeNext = (next: string | null) => (next && next.startsWith("/") && !next.startsWith("//") ? next : "/account");
 
 function validate(mode: Mode, f: Fields) {
   const e: Partial<Record<keyof Fields, string>> = {};

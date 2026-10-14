@@ -39,9 +39,9 @@ export async function createCouponAction(_: FormState, formData: FormData): Prom
   try {
     // An expiry date means "valid through the end of that day" in India.
     await sql(
-      `insert into shop.coupons (code, kind, value, min_subtotal, max_uses, expires_at)
-       values ($1,$2,$3,$4,$5, case when $6::text is null then null else ((($6::text)::date + 1)::timestamp at time zone 'Asia/Kolkata') end)`,
-      [c.code, c.kind, c.value, c.min_subtotal, c.max_uses, c.expires_on],
+      `insert into shop.coupons (code, kind, value, min_subtotal, max_uses, expires_at, once_per_email)
+       values ($1,$2,$3,$4,$5, case when $6::text is null then null else ((($6::text)::date + 1)::timestamp at time zone 'Asia/Kolkata') end, $7)`,
+      [c.code, c.kind, c.value, c.min_subtotal, c.max_uses, c.expires_on, c.once_per_email],
     );
   } catch (e) {
     if (isUnique(e)) return { error: "A coupon with that code already exists." };

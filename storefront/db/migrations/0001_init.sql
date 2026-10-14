@@ -178,6 +178,52 @@ create table if not exists shop.order_items (
 );
 create index if not exists order_items_order on shop.order_items (order_id);
 
+-- ── Admin hardening: temporary passwords, two-step sign-in, reset links, audit trail ───────────
+
+alter table shop.admins add column if not exists must_change_password boolean not null default false;
+alter table shop.admins add column if not exists temp_password_expires_at timestamptz;
+alter table shop.admins add column if not exists password_changed_at  timestamptz;
+-- Two-step sign-in (authenticator app). Secrets are stored encrypted by the app, never in plain text.
+alter table shop.admins add column if not exists totp_enabled   boolean not null default false;
+alter table shop.admins add column if not exists totp_secret    text;
+alter table shop.admins add column if not exists totp_pending   text;
+alter table shop.admins add column if not exists totp_last_step bigint not null default 0;
+-- Keyed hashes of the one-time recovery codes.
+alter table shop.admins add column if not exists recovery_hashes text[] not null default '{}';
+
+-- Password reset links. Only the SHA-256 of the token is stored. A link works once and expires.
+create table if not exists shop.password_resets (
+  token_hash text primary key,
+  admin_id   uuid not null references shop.admins (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at    timestamptz
+);
+create index if not exists password_resets_admin on shop.password_resets (admin_id);
+
+-- What happened, and when.
+create table if not exists shop.admin_audit (
+  id         bigint generated always as identity primary key,
+  admin_id   uuid references shop.admins (id) on delete set null,
+  email      text not null default '',
+  event      text not null check (char_length(event) <= 60),
+  detail     text not null default '' check (char_length(detail) <= 300),
+  ip_hash    text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists admin_audit_recent on shop.admin_audit (created_at desc);
+
+alter table shop.coupons add column if not exists once_per_email boolean not null default true;
+
+-- Orders: who bought (normalised), where to, and a client-chosen key that makes a retried submit harmless.
+alter table shop.orders add column if not exists email_norm  text not null default '';
+alter table shop.orders add column if not exists address_key text not null default '';
+alter table shop.orders add column if not exists idem_key    uuid;
+create unique index if not exists orders_idem on shop.orders (idem_key) where idem_key is not null;
+create index if not exists orders_coupon_person on shop.orders (coupon_code, email_norm) where coupon_code is not null;
+create index if not exists orders_open_email on shop.orders (email_norm) where status in ('placed', 'packed');
+create index if not exists orders_open_phone on shop.orders (phone) where status in ('placed', 'packed');
+
 -- ── Abuse protection ───────────────────────────────────────────────────────
 
 create table if not exists shop.rate_limits (
@@ -185,11 +231,13 @@ create table if not exists shop.rate_limits (
   count    int not null,
   reset_at timestamptz not null
 );
+create index if not exists rate_limits_reset on shop.rate_limits (reset_at);
 
 -- True while the caller is within `p_max` hits per `p_window_seconds`.
 create or replace function shop.rate_limit(p_key text, p_max int, p_window_seconds int)
 returns boolean
 language plpgsql
+set search_path = ''
 as $$
 declare
   c int;
@@ -203,13 +251,36 @@ begin
 
   -- Housekeeping: about one call in fifty clears expired counters.
   if random() < 0.02 then
-    delete from shop.rate_limits where reset_at < now() - interval '1 hour';
+    delete from shop.rate_limits where key in (select key from shop.rate_limits where reset_at < now() - interval '1 hour' for update skip locked);
     delete from shop.admin_sessions where expires_at < now();
     delete from shop.customer_sessions where expires_at < now();
+    delete from shop.password_resets where expires_at < now() - interval '1 day';
+    delete from shop.admin_audit where created_at < now() - interval '180 days';
+    delete from shop.admin_audit where id <= (select coalesce(max(id), 0) - 5000 from shop.admin_audit);
   end if;
 
   return c <= p_max;
 end;
+$$;
+
+-- Wipes the counters whose key starts with a prefix (used after a password reset by emailed link).
+create or replace function shop.rate_limit_clear(p_prefix text)
+returns void
+language sql
+set search_path = ''
+as $$
+  delete from shop.rate_limits where left(key, length(p_prefix)) = p_prefix;
+$$;
+
+-- True while this key has used fewer than p_max of its allowance. It only looks; it never counts.
+-- Sign-in limits use it so that only FAILED attempts use up the allowance.
+create or replace function shop.rate_limit_check(p_key text, p_max int)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce((select r.reset_at < now() or r.count < p_max from shop.rate_limits r where r.key = p_key), true);
 $$;
 
 -- ── Pricing and ordering ───────────────────────────────────────────────────
@@ -220,9 +291,64 @@ $$;
 -- p_lock:   true when placing an order (locks the product rows so two buyers cannot take the last item).
 -- Errors are raised as 'CODE:detail' and mapped to friendly messages by the app.
 
-create or replace function shop.price_cart(p_items jsonb, p_shipping text, p_coupon text, p_lock boolean)
+create or replace function shop.normalize_email(p text)
+returns text
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  l   text := lower(btrim(coalesce(p, '')));
+  loc text := split_part(l, '@', 1);
+  dom text := split_part(l, '@', 2);
+begin
+  -- "asha+deal@gmail.com" and "a.sha@gmail.com" are the same mailbox as "asha@gmail.com".
+  loc := regexp_replace(loc, '\+.*$', '');
+  if dom in ('gmail.com', 'googlemail.com') then
+    loc := replace(loc, '.', '');
+    dom := 'gmail.com';
+  end if;
+  return loc || '@' || dom;
+end;
+$$;
+
+-- "12 Rose Society, Patan 384265" written any which way gives the same key. An address with too little Latin text to
+-- tell households apart (written in Gujarati or Hindi, or just "12") gets NO key (an empty string), so two different
+-- households in one PIN code are never mistaken for each other. Empty keys are ignored by every rule that uses them.
+create or replace function shop.address_key(p_pincode text, p_address text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when length(regexp_replace(lower(coalesce(p_address, '')), '[^a-z0-9]', '', 'g')) < 12 then ''
+    else coalesce(p_pincode, '') || ':' || left(regexp_replace(lower(coalesce(p_address, '')), '[^a-z0-9]', '', 'g'), 60)
+  end;
+$$;
+
+-- Refund a counted hit (used when a sign-in succeeds, so only failures use up the allowance).
+create or replace function shop.rate_limit_refund(p_key text)
+returns void
+language sql
+set search_path = ''
+as $$
+  update shop.rate_limits set count = greatest(count - 1, 0) where key = p_key and reset_at >= now();
+$$;
+
+-- Old signatures are replaced by the one below.
+drop function if exists shop.price_cart(jsonb, text, text, boolean);
+drop function if exists shop.price_cart(jsonb, text, text, text, text);
+
+-- Limits on a single web order. They exist so that one anonymous cash-on-delivery order can't empty
+-- the shelves. The owner's own "take an order" screen is exempt.
+--   at most 30 items, at most ₹50,000, and no more of one product than half its stock (never fewer than 3).
+-- p_who: {"email", "phone", "address_key", "customer_id", "admin"}   (all optional)
+
+create or replace function shop.price_cart(p_items jsonb, p_shipping text, p_coupon text, p_who jsonb default '{}'::jsonb, p_lock boolean default false)
 returns jsonb
 language plpgsql
+set search_path = ''
 as $$
 declare
   s            shop.settings;
@@ -232,11 +358,13 @@ declare
   qty          int;
   lines        jsonb := '[]'::jsonb;
   subtotal     int := 0;
+  units        int := 0;
   fee          int;
   disc         int := 0;
   cp           shop.coupons;
   applied      text := null;
   wanted       record;
+  is_admin     boolean := coalesce((p_who->>'admin')::boolean, false);
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
     raise exception 'EMPTY_CART:';
@@ -244,15 +372,18 @@ begin
   if jsonb_array_length(p_items) > 40 then
     raise exception 'TOO_MANY_LINES:';
   end if;
-  if p_shipping not in ('standard', 'express') then
+  if p_shipping is null or p_shipping not in ('standard', 'express') then
     raise exception 'BAD_SHIPPING:';
   end if;
 
   select * into s from shop.settings where id = 1;
 
-  -- Lock in a fixed order so concurrent orders cannot deadlock.
   select array_agg(distinct (e->>'product_id')::uuid) into ids from jsonb_array_elements(p_items) e;
-  perform 1 from shop.products where id = any(ids) order by id for update;
+  -- Only an order being placed locks the products (in a fixed order, so orders can't deadlock).
+  -- A price quote just reads, so quotes never queue behind each other or behind orders.
+  if p_lock then
+    perform 1 from shop.products where id = any(ids) order by id for update;
+  end if;
 
   for line in select * from jsonb_array_elements(p_items) loop
     qty := (line->>'quantity')::int;
@@ -265,9 +396,19 @@ begin
     end if;
     lines := lines || jsonb_build_object(
       'product_id', prod.id, 'title', prod.title, 'unit_price', prod.price, 'quantity', qty,
-      'image', prod.image, 'tint', prod.tint, 'wrap', line->'wrap', 'handle', prod.handle);
+      'image', prod.image, 'tint', prod.tint, 'handle', prod.handle,
+      -- Gift-wrap details only count on the paid gift-wrap service line, never on an ordinary product.
+      'wrap', case when prod.hidden then line->'wrap' else null end);
     subtotal := subtotal + prod.price * qty;
+    -- Gift wrap is a service, not stock leaving the shelves, so it doesn't count toward the 30-item cap.
+    if not prod.hidden then
+      units := units + qty;
+    end if;
   end loop;
+
+  if not is_admin and (units > 30 or subtotal > 50000) then
+    raise exception 'ORDER_TOO_BIG:';
+  end if;
 
   -- Stock is checked against the TOTAL asked for each product (the same product can sit on two lines).
   for wanted in
@@ -278,18 +419,18 @@ begin
     if prod.track_stock and prod.stock < wanted.qty then
       raise exception 'OUT_OF_STOCK:%|%', prod.title, prod.stock;
     end if;
+    if prod.track_stock and not is_admin and wanted.qty > greatest(3, ceil(prod.stock / 2.0)::int) then
+      raise exception 'TOO_MANY_OF_ONE:%|%', prod.title, greatest(3, ceil(prod.stock / 2.0)::int);
+    end if;
   end loop;
-
-  -- Delivery: standard is free over the threshold; express always costs its flat fee.
-  fee := case
-    when p_shipping = 'express' then s.shipping_express
-    when s.free_shipping_from > 0 and subtotal >= s.free_shipping_from then 0
-    else s.shipping_flat
-  end;
 
   -- Coupon. Every failure looks the same, so codes cannot be probed.
   if p_coupon is not null and p_coupon <> '' then
-    select * into cp from shop.coupons where code = upper(p_coupon) for update;
+    if p_lock then
+      select * into cp from shop.coupons where code = upper(p_coupon) for update;
+    else
+      select * into cp from shop.coupons where code = upper(p_coupon);
+    end if;
     if not found
        or not cp.active
        or (cp.expires_at is not null and cp.expires_at < now())
@@ -297,9 +438,28 @@ begin
        or subtotal < cp.min_subtotal then
       raise exception 'BAD_COUPON:';
     end if;
-    disc := case when cp.kind = 'percent' then floor(subtotal * cp.value / 100.0)::int else least(cp.value, subtotal) end;
+    -- One use per person: the same mailbox (ignoring dots and +tags), phone number, delivery address or
+    -- signed-in account can't use it twice. A cancelled order frees the code again.
+    if cp.once_per_email and exists (
+         select 1 from shop.orders o
+          where o.coupon_code = cp.code and o.status <> 'cancelled'
+            and ((coalesce(p_who->>'email', '') <> '' and o.email_norm = shop.normalize_email(p_who->>'email'))
+              or (coalesce(p_who->>'phone', '') <> '' and o.phone = p_who->>'phone')
+              or (coalesce(p_who->>'address_key', '') <> '' and o.address_key = p_who->>'address_key')
+              or (coalesce(p_who->>'customer_id', '') <> '' and o.customer_id = (p_who->>'customer_id')::uuid))) then
+      raise exception 'BAD_COUPON:';
+    end if;
+    disc := case when cp.kind = 'percent' then floor(subtotal::bigint * cp.value / 100.0)::int else least(cp.value, subtotal) end;
     applied := cp.code;
   end if;
+
+  -- Delivery. Free standard delivery is judged on what the customer actually pays for the items
+  -- (after any coupon), so a big coupon can't be used to unlock free delivery as well.
+  fee := case
+    when p_shipping = 'express' then s.shipping_express
+    when s.free_shipping_from > 0 and subtotal - disc >= s.free_shipping_from then 0
+    else s.shipping_flat
+  end;
 
   return jsonb_build_object(
     'lines', lines, 'subtotal', subtotal, 'shipping_fee', fee, 'discount', disc,
@@ -310,6 +470,7 @@ $$;
 create or replace function shop.place_order(p jsonb)
 returns jsonb
 language plpgsql
+set search_path = ''
 as $$
 declare
   priced   jsonb;
@@ -317,15 +478,69 @@ declare
   onum     bigint;
   l        jsonb;
   cust     uuid := nullif(p->>'customer_id', '')::uuid;
+  idem     uuid := nullif(p->>'idem_key', '')::uuid;
+  is_admin boolean := coalesce(nullif(p->>'source', ''), 'web') = 'admin';
+  ekey     text := shop.normalize_email(p->>'email');
+  akey     text := shop.address_key(p->>'pincode', p->>'address1');
+  open_n   int;
+  prev     record;
 begin
-  priced := shop.price_cart(p->'items', p->>'shipping', nullif(p->>'coupon', ''), true);
+  -- Never wait forever for a row another order is holding. (A cap on total run time is set by the caller, because a
+  -- statement_timeout set from inside a running statement would only apply to the NEXT one.)
+  perform set_config('lock_timeout', '5s', true);
 
-  insert into shop.orders (customer_id, source, email, phone, name, address1, address2, city, state, pincode,
-                           shipping_method, shipping_fee, subtotal, discount, total, coupon_code, payment_status)
-  values (cust, coalesce(nullif(p->>'source', ''), 'web'), lower(p->>'email'), p->>'phone', p->>'name',
-          p->>'address1', coalesce(p->>'address2', ''), p->>'city', coalesce(p->>'state', ''), p->>'pincode',
+  -- The same order submitted twice (a lost reply, a double tap) is one order.
+  if idem is not null then
+    select id, number, total, subtotal, discount, shipping_fee into prev from shop.orders where idem_key = idem;
+    if found then
+      return jsonb_build_object('id', prev.id, 'number', prev.number, 'total', prev.total, 'subtotal', prev.subtotal,
+                                'discount', prev.discount, 'shipping_fee', prev.shipping_fee, 'duplicate', true);
+    end if;
+  end if;
+
+  if not is_admin then
+    -- Orders that share an email, a phone number or a delivery address go through one at a time (the locks are
+    -- always taken in the same sorted order, so they can't deadlock), which is what makes the open-order limit
+    -- impossible to race with parallel requests.
+    perform pg_advisory_xact_lock(k) from (
+      select distinct hashtext(x) as k
+        from unnest(array['e:' || ekey, case when coalesce(p->>'phone', '') <> '' then 'p:' || (p->>'phone') end, case when akey <> '' then 'a:' || akey end]) x
+       where x is not null
+       order by 1) locks;
+
+    -- Another request for the same order may have finished while this one waited for the locks.
+    if idem is not null then
+      select id, number, total, subtotal, discount, shipping_fee into prev from shop.orders where idem_key = idem;
+      if found then
+        return jsonb_build_object('id', prev.id, 'number', prev.number, 'total', prev.total, 'subtotal', prev.subtotal,
+                                  'discount', prev.discount, 'shipping_fee', prev.shipping_fee, 'duplicate', true);
+      end if;
+    end if;
+
+    select count(*) into open_n from shop.orders
+     where status in ('placed', 'packed')
+       and (email_norm = ekey
+            or (coalesce(p->>'phone', '') <> '' and phone = p->>'phone')
+            or (akey <> '' and address_key = akey));
+    if open_n >= 3 then
+      raise exception 'TOO_MANY_OPEN:';
+    end if;
+  end if;
+
+  priced := shop.price_cart(p->'items', p->>'shipping', nullif(p->>'coupon', ''),
+    jsonb_build_object('email', p->>'email', 'phone', p->>'phone', 'address_key', akey, 'customer_id', p->>'customer_id', 'admin', is_admin), true);
+
+  -- "What you see is what you pay": if the price moved since the customer last saw it, say so instead of charging more.
+  if nullif(p->>'expected_total', '') is not null and (p->>'expected_total')::int <> (priced->>'total')::int then
+    raise exception 'PRICE_CHANGED:%', priced->>'total';
+  end if;
+
+  insert into shop.orders (customer_id, source, email, email_norm, phone, name, address1, address2, city, state, pincode, address_key,
+                           shipping_method, shipping_fee, subtotal, discount, total, coupon_code, payment_status, idem_key)
+  values (cust, case when is_admin then 'admin' else 'web' end, lower(p->>'email'), ekey, p->>'phone', p->>'name',
+          p->>'address1', coalesce(p->>'address2', ''), p->>'city', coalesce(p->>'state', ''), p->>'pincode', akey,
           p->>'shipping', (priced->>'shipping_fee')::int, (priced->>'subtotal')::int, (priced->>'discount')::int,
-          (priced->>'total')::int, priced->>'coupon_code', 'pending')
+          (priced->>'total')::int, priced->>'coupon_code', 'pending', idem)
   returning id, number into oid, onum;
 
   for l in select * from jsonb_array_elements(priced->'lines') loop
@@ -345,13 +560,25 @@ begin
                             'subtotal', (priced->>'subtotal')::int, 'discount', (priced->>'discount')::int,
                             'shipping_fee', (priced->>'shipping_fee')::int,
                             'lines', (select jsonb_agg(jsonb_build_object('title', x->>'title', 'quantity', (x->>'quantity')::int)) from jsonb_array_elements(priced->'lines') x));
+exception
+  when unique_violation then
+    -- Two submits of the same order raced: the other one won. Return it (this attempt is rolled back).
+    if idem is not null then
+      select id, number, total, subtotal, discount, shipping_fee into prev from shop.orders where idem_key = idem;
+      if found then
+        return jsonb_build_object('id', prev.id, 'number', prev.number, 'total', prev.total, 'subtotal', prev.subtotal,
+                                  'discount', prev.discount, 'shipping_fee', prev.shipping_fee, 'duplicate', true);
+      end if;
+    end if;
+    raise;
 end;
 $$;
 
--- Moves an order along: placed → packed → shipped → delivered, or cancelled (which puts the stock back).
+-- Moves an order along: placed → packed → shipped → delivered, or cancelled (which puts the stock and the coupon use back).
 create or replace function shop.set_order_status(p_id uuid, p_status text)
 returns void
 language plpgsql
+set search_path = ''
 as $$
 declare
   o     shop.orders;
@@ -359,6 +586,7 @@ declare
   from_i int;
   to_i   int;
 begin
+  perform set_config('lock_timeout', '5s', true);
   select * into o from shop.orders where id = p_id for update;
   if not found then raise exception 'NO_ORDER:'; end if;
   if p_status not in ('placed', 'packed', 'shipped', 'delivered', 'cancelled') then raise exception 'BAD_STATUS:'; end if;
@@ -367,9 +595,16 @@ begin
 
   if p_status = 'cancelled' then
     if not o.restocked then
+      -- Lock the products in the same order a new order does, so the two can never deadlock.
+      perform 1 from shop.products
+        where id in (select product_id from shop.order_items where order_id = o.id and product_id is not null)
+        order by id for update;
       update shop.products pr set stock = pr.stock + i.q
         from (select product_id, sum(quantity) as q from shop.order_items where order_id = o.id and product_id is not null group by 1) i
         where pr.id = i.product_id and pr.track_stock;
+      if o.coupon_code is not null then
+        update shop.coupons set used = greatest(used - 1, 0) where code = o.coupon_code;
+      end if;
     end if;
     update shop.orders set status = 'cancelled', cancelled_at = now(), restocked = true where id = o.id;
     return;
@@ -388,11 +623,15 @@ begin
 end;
 $$;
 
+update shop.orders set email_norm = shop.normalize_email(email) where email_norm = '';
+update shop.orders set address_key = shop.address_key(pincode, address1) where address_key = '';
+
 -- What a customer may see when tracking. Deliberately leaves out phone, street address and notes.
 create or replace function shop.track_order(p_number bigint, p_email text)
 returns jsonb
 language sql
 stable
+set search_path = ''
 as $$
   select jsonb_build_object(
     'number', o.number, 'placed_at', o.placed_at, 'stage', o.status,
@@ -409,7 +648,7 @@ as $$
   where o.number = p_number and o.email = lower(p_email);
 $$;
 
-create or replace function shop.touch_updated_at() returns trigger language plpgsql as $$
+create or replace function shop.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$
 begin new.updated_at := now(); return new; end; $$;
 drop trigger if exists products_touch on shop.products;
 create trigger products_touch before update on shop.products for each row execute function shop.touch_updated_at();
@@ -428,6 +667,8 @@ alter table shop.customer_sessions  enable row level security;
 alter table shop.orders             enable row level security;
 alter table shop.order_items        enable row level security;
 alter table shop.rate_limits        enable row level security;
+alter table shop.password_resets    enable row level security;
+alter table shop.admin_audit        enable row level security;
 
 revoke all on schema shop from public;
 revoke all on all tables    in schema shop from public;

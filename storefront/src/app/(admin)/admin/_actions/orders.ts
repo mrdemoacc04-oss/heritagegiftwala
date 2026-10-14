@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/server/admin-auth";
 import { trackingForm } from "@/lib/server/admin-schemas";
-import { friendlyOrderError, shopError, sql } from "@/lib/server/db";
+import { callInTransaction, friendlyOrderError, shopError, sql } from "@/lib/server/db";
 import { orderInput } from "@/lib/server/schemas";
 import { clean } from "@/lib/server/schemas";
 import { CATALOG_TAG } from "@/lib/catalog";
@@ -27,7 +27,7 @@ export async function setStatusAction(formData: FormData) {
   const status = STATUSES.safeParse(formData.get("status"));
   if (!id.success || !status.success) return;
   try {
-    await sql("select shop.set_order_status($1, $2)", [id.data, status.data]);
+    await callInTransaction("select shop.set_order_status($1, $2)", [id.data, status.data]);
   } catch (e) {
     if (!shopError(e)) throw e;
   }
@@ -94,7 +94,7 @@ export async function createOrderAction(_: FormState, formData: FormData): Promi
   let number: string;
   let id: string;
   try {
-    const [row] = await sql<{ r: { id: string; number: string } }>("select shop.place_order($1::jsonb) as r", [JSON.stringify({ items: lines, shipping, coupon, ...contact, source: "admin" })]);
+    const [row] = await callInTransaction<{ r: { id: string; number: string } }>("select shop.place_order($1::jsonb) as r", [JSON.stringify({ items: lines, shipping, coupon, ...contact, source: "admin" })]);
     ({ number, id } = row.r);
   } catch (e) {
     const err = shopError(e);

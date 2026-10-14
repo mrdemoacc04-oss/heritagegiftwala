@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { ArrowLeftIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon, UserCircleIcon, MapPinIcon, TagIcon, CreditCardIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
+import { Turnstile, turnstileSiteKey } from "@/components/checkout/Turnstile";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { cartSubtotal, useCart } from "@/lib/store/cart";
 import { useAuth, type Address } from "@/lib/store/auth";
@@ -62,12 +63,12 @@ function fromAddress(a: Address): Partial<Form> {
   };
 }
 
-async function post<T>(url: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string; code?: string; productId?: string }> {
+async function post<T>(url: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string; code?: string; productId?: string; newTotal?: number }> {
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return { ok: true, data: data as T };
-    return { ok: false, status: res.status, message: data.message ?? "Something went wrong. Please try again.", code: data.code, productId: data.product_id };
+    return { ok: false, status: res.status, message: data.message ?? "Something went wrong. Please try again.", code: data.code, productId: data.product_id, newTotal: data.new_total };
   } catch {
     return { ok: false, status: 0, message: "We couldn't reach the shop. Please check your connection and try again." };
   }
@@ -86,11 +87,19 @@ export function Checkout() {
   const [pay, setPay] = useState(live ? "cod" : "online");
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string>();
+  // Said by the shop when the order itself was refused. It stays until the customer changes something, so the next price check can't wipe it.
+  const [refused, setRefused] = useState<{ message: string; coupon?: boolean }>();
   const [quote, setQuote] = useState<Quote>();
   const [quoting, setQuoting] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [coupon, setCoupon] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string>();
+  // One random id for this checkout: pressing the button twice, or retrying after a lost reply, can never make two orders.
+  const [idemKey] = useState(() => crypto.randomUUID());
+  const [quoteTick, setQuoteTick] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const onCaptcha = useCallback((t: string) => setCaptchaToken(t), []);
   const subtotal = cartSubtotal(lines);
   const customer = useAuth((s) => s.customer);
   const authReady = useAuth((s) => s.ready);
@@ -144,7 +153,7 @@ export function Checkout() {
     })();
     // The bag's contents are compared through itemsKey, so a re-render with the same lines does not re-price.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, itemsKey, ship, coupon]);
+  }, [live, itemsKey, ship, coupon, quoteTick]);
 
   const standardFee = settings.freeShippingFrom > 0 && subtotal >= settings.freeShippingFrom ? 0 : settings.shippingFlat;
   const shippingOptions = [
@@ -164,6 +173,7 @@ export function Checkout() {
   const applyCoupon = () => {
     const code = couponInput.trim().toUpperCase();
     setCouponError(undefined);
+    setRefused(undefined);
     if (!code) return;
     if (!/^[A-Z0-9_-]{3,24}$/.test(code)) return setCouponError("That doesn't look like a coupon code.");
     setCoupon(code);
@@ -179,6 +189,7 @@ export function Checkout() {
     }
     setPlacing(true);
     setFailure(undefined);
+    setRefused(undefined);
 
     let orderNo: string;
     let finalTotal = total;
@@ -187,11 +198,20 @@ export function Checkout() {
         items,
         shipping: ship,
         coupon,
+        idem_key: idemKey,
+        // The total the customer is looking at: if the price has moved since, the shop says so instead of charging more.
+        expected_total: quote ? total : undefined,
+        captcha: captchaToken || undefined,
         contact: { email: form.email, phone: form.phone, name: form.name, address1: form.address1, address2: form.address2, city: form.city, state: form.state, pincode: form.pincode },
       });
       if (!res.ok) {
-        setFailure(res.message);
+        // A code that was fine in the preview can still be refused at the last moment (for example, already used by this customer).
+        if (res.code === "BAD_COUPON") setCoupon(null);
+        setRefused({ message: res.message, coupon: res.code === "BAD_COUPON" });
         setPlacing(false);
+        if (turnstileSiteKey) setCaptchaReset((n) => n + 1);
+        // The price moved while they were on this page: show them the new total before anything is charged.
+        if (res.code === "PRICE_CHANGED") setQuoteTick((n) => n + 1);
         return;
       }
       orderNo = `#${res.data.order.number}`;
@@ -301,7 +321,7 @@ export function Checkout() {
         <Step n={3} title="Delivery speed">
           <div className="grid gap-3 sm:grid-cols-2">
             {shippingOptions.map((o, i) => (
-              <Radio key={o.id} name="ship" checked={ship === o.id} onChange={() => setShip(o.id)} icon={i ? LightningIcon : TruckIcon} label={o.label} detail={o.detail} right={o.amount ? formatPrice(o.amount) : "Free"} />
+              <Radio key={o.id} name="ship" checked={ship === o.id} onChange={() => { setShip(o.id); setRefused(undefined); }} icon={i ? LightningIcon : TruckIcon} label={o.label} detail={o.detail} right={o.amount ? formatPrice(o.amount) : "Free"} />
             ))}
           </div>
         </Step>
@@ -352,8 +372,8 @@ export function Checkout() {
                 />
                 <button type="button" onClick={applyCoupon} className="rounded-2xl border-2 border-ink px-4 font-bold hover:bg-sun">Apply</button>
               </div>
-              {couponError && <p className="mt-1.5 text-sm font-semibold text-ribbon">{couponError}</p>}
-              {quote?.coupon && !couponError && (
+              {(couponError ?? (refused?.coupon ? refused.message : undefined)) && <p className="mt-1.5 text-sm font-semibold text-ribbon">{couponError ?? refused?.message}</p>}
+              {quote?.coupon && !couponError && !refused?.coupon && (
                 <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-lagoon-800">
                   <TagIcon size={16} weight="fill" /> {quote.coupon} applied
                 </p>
@@ -389,17 +409,18 @@ export function Checkout() {
               {formatPrice(total)}
             </motion.span>
           </div>
-          {failure && (
+          {(refused && !refused.coupon ? refused.message : failure) && (
             <p className="mt-4 rounded-xl bg-ribbon-100 px-3 py-2 text-sm font-semibold text-ribbon-700">
-              {failure}{" "}
-              {failure.includes("out of date") && (
+              {refused && !refused.coupon ? refused.message : failure}{" "}
+              {failure?.includes("out of date") && (
                 <button type="button" onClick={() => clear()} className="underline underline-offset-2">Empty the bag</button>
               )}
             </p>
           )}
+          {live && <Turnstile onToken={onCaptcha} resetSignal={captchaReset} />}
           <button
             type="submit"
-            disabled={placing || (live && (quoting || !quote))}
+            disabled={placing || (live && (quoting || !quote)) || (live && Boolean(turnstileSiteKey) && !captchaToken)}
             className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-ribbon text-lg font-bold text-white shadow-[0_6px_0_var(--color-ribbon-700)] transition hover:bg-ribbon-700 active:translate-y-1 active:shadow-none disabled:opacity-60"
           >
             {placing || quoting ? <SpinnerGapIcon size={20} weight="bold" className="animate-spin" /> : <LockSimpleIcon size={18} weight="bold" />}

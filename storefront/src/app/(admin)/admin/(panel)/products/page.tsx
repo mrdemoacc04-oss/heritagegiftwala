@@ -9,7 +9,7 @@ export const metadata = { title: "Products" };
 
 type Row = { id: string; title: string; handle: string; price: number; stock: number; track_stock: boolean; status: string; hidden: boolean; image: string; tint: string; categories: string[] };
 
-export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string }> }) {
+export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string; stockchanged?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim().slice(0, 60);
@@ -30,6 +30,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         hint="Change a price or the stock right in the list and press Save on that row. Click a name to edit everything else."
         actions={<Link href="/admin/products/new" className={buttonClass("primary")}>Add a product</Link>}
       />
+      {sp.stockchanged && (
+        <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          The price was saved, but the stock number was not: customers bought some while this page was open, so the figures below are now up to date. Check the stock and save again if you still want to change it.
+        </p>
+      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <TabLink href="/admin/products" active={!show}>All</TabLink>
         <TabLink href="/admin/products?show=low" active={show === "low"}>Running low</TabLink>
@@ -73,6 +78,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                   <td colSpan={3} className="p-0">
                     <form action={quickEditAction} className="flex items-center gap-3 px-4 py-2">
                       <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="stock_was" value={p.stock} />
                       <input name="price" type="number" inputMode="numeric" min={0} max={1000000} defaultValue={p.price} aria-label={`Price of ${p.title}`} className={`${inputClass} w-28`} />
                       {p.track_stock ? (
                         <input name="stock" type="number" inputMode="numeric" min={0} max={100000} defaultValue={p.stock} aria-label={`Stock of ${p.title}`} className={`${inputClass} w-24`} />

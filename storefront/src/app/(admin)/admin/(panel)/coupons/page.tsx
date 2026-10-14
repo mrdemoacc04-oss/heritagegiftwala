@@ -6,11 +6,11 @@ import { requireAdmin } from "@/lib/server/admin-auth";
 
 export const metadata = { title: "Coupons" };
 
-type C = { code: string; kind: "percent" | "fixed"; value: number; min_subtotal: number; max_uses: number | null; used: number; expires_at: string | null; active: boolean; expired: boolean };
+type C = { code: string; kind: "percent" | "fixed"; value: number; min_subtotal: number; max_uses: number | null; used: number; expires_at: string | null; active: boolean; expired: boolean; once_per_email: boolean };
 
 export default async function CouponsPage() {
   await requireAdmin();
-  const coupons = await sql<C>("select code, kind, value, min_subtotal, max_uses, used, expires_at, active, (expires_at is not null and expires_at < now()) as expired from shop.coupons order by created_at desc");
+  const coupons = await sql<C>("select code, kind, value, min_subtotal, max_uses, used, expires_at, active, (expires_at is not null and expires_at < now()) as expired, once_per_email from shop.coupons order by created_at desc");
   return (
     <>
       <PageTitle title="Coupons" hint="Customers type a code at checkout. The discount is worked out on the items (before delivery)." />
@@ -34,6 +34,7 @@ export default async function CouponsPage() {
                         <td className="px-4 py-2.5">
                           {c.kind === "percent" ? `${c.value}% off` : `${rupees(c.value)} off`}
                           {c.min_subtotal > 0 && <span className="block text-xs text-stone-500">on {rupees(c.min_subtotal)}+</span>}
+                          {c.once_per_email && <span className="block text-xs text-stone-500">one use per customer</span>}
                           {c.expires_at && <span className="block text-xs text-stone-500">until {when(c.expires_at).split(",")[0]}</span>}
                         </td>
                         <td className="px-4 py-2.5">{c.used}{c.max_uses !== null ? ` of ${c.max_uses}` : ""}</td>
@@ -67,6 +68,7 @@ export default async function CouponsPage() {
               <Field label="Limit uses (optional)"><input name="max_uses" type="number" inputMode="numeric" min={1} placeholder="No limit" className={inputClass} /></Field>
               <Field label="Last day (optional)"><input name="expires_on" type="date" className={inputClass} /></Field>
             </div>
+            <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="once_per_email" defaultChecked className="size-4 accent-stone-900" /> One use per customer (same email or phone)</label>
             <SubmitButton>Create coupon</SubmitButton>
           </ActionForm>
         </Card>

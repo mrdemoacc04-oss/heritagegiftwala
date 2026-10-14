@@ -15,7 +15,7 @@ export const POST = guard(async (req) => {
   if (coupon && !(await allow(`coupon:${ip}`, 25, 600))) return json({ message: "Too many coupon attempts. Please wait a few minutes." }, 429);
 
   try {
-    const [row] = await sql<{ r: PricedCart }>("select shop.price_cart($1::jsonb, $2, $3, false) as r", [JSON.stringify(items), shipping, coupon]);
+    const [row] = await sql<{ r: PricedCart }>("select shop.price_cart($1::jsonb, $2, $3, '{}'::jsonb, false) as r", [JSON.stringify(items), shipping, coupon]);
     const r = row.r;
     return json({
       lines: r.lines.map((l) => ({ product_id: l.product_id, title: l.title, unit_price: l.unit_price, quantity: l.quantity, image: l.image, tint: l.tint })),

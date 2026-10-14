@@ -9,6 +9,7 @@ export const POST = guard(async (req) => {
   if (!sameOrigin(req)) throw new HttpError(403, "That request wasn't allowed.");
   const admin = await getAdmin();
   if (!admin) throw new HttpError(401, "Please sign in again.");
+  if (admin.setupNeeded) throw new HttpError(403, "Finish your security set-up first.");
   if (!(await allow(`upload:${admin.id}`, 60, 600))) throw new HttpError(429, "Too many uploads. Please wait a few minutes.");
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 64 * 1024) throw new HttpError(413, "That photo is too large (4 MB at most).");
 

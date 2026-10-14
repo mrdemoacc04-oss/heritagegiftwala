@@ -47,7 +47,7 @@ export default async function ProductPage({ params }: Props) {
     "@type": "Product",
     name: product.title,
     description: product.description,
-    image: [product.studio, product.image].filter(Boolean).map((src) => `${site.url}${src}`),
+    image: [product.studio, product.image].filter(Boolean).map((src) => (/^https?:\/\//.test(src!) ? src : `${site.url}${src}`)),
     brand: { "@type": "Brand", name: site.name },
     offers: {
       "@type": "Offer",

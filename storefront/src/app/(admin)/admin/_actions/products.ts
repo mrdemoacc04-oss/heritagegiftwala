@@ -2,6 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { CATALOG_TAG } from "@/lib/catalog";
 import { requireAdmin } from "@/lib/server/admin-auth";
 import { productForm, quickEdit } from "@/lib/server/admin-schemas";
@@ -89,13 +90,21 @@ export async function updateProductAction(id: string, _: FormState, formData: Fo
   // The gift-wrap service is found by its address, so that address stays put, and it can never be saved as a draft.
   const handle = current[0].hidden ? current[0].handle : v.handle;
   const status = current[0].hidden ? "active" : v.status;
+  // The stock the owner SAW when the page opened. If customers have bought some since, saving would silently bring the
+  // sold units back, so a stock figure that differs from what is now in the shop is only accepted when it was left alone.
+  const was = z.coerce.number().int().min(0).max(100000).safeParse(formData.get("stock_was"));
+  const stockWas = was.success ? was.data : null;
   try {
-    await sql(
+    const rows = await sql(
       `update shop.products set title=$2, handle=$3, subtitle=$4, description=$5, price=$6, compare_at=$7, categories=$8, recipients=$9, occasions=$10,
-              details=$11, tint=$12, badge=$13, rank=$14, is_new=$15, status=$16, track_stock=$17, stock=$18, image=$19, studio=$20, shelf=$21, image_fit=$22
-        where id = $1`,
-      [id, v.title, handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit],
+              details=$11, tint=$12, badge=$13, rank=$14, is_new=$15, status=$16, track_stock=$17,
+              stock = case when $23::int is not null and $18 = $23 then stock else $18 end,
+              image=$19, studio=$20, shelf=$21, image_fit=$22
+        where id = $1 and ($23::int is null or $18 = $23 or stock = $23)
+        returning id`,
+      [id, v.title, handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit, stockWas],
     );
+    if (!rows.length) return { error: "The stock changed while you were editing (customers have bought some). Nothing was saved. Reload this page and try again." };
   } catch (e) {
     if (isUnique(e)) return { error: "Another product already uses that web address." };
     throw e;
@@ -110,9 +119,21 @@ export async function quickEditAction(formData: FormData) {
   await requireAdmin();
   const p = quickEdit.safeParse(Object.fromEntries(formData));
   if (!p.success) return;
-  await sql("update shop.products set price = $2, stock = $3 where id = $1", [p.data.id, p.data.price, p.data.stock]);
+  // The price is always saved. The stock figure is only applied if it is still what the owner saw (or was left alone),
+  // otherwise it would undo sales made since the page opened.
+  const [row] = await sql<{ conflict: boolean }>(
+    `with cur as (select stock from shop.products where id = $1 for update)
+     update shop.products p
+        set price = $2::int,
+            stock = case when $3::int = $4::int then p.stock when cur.stock = $4::int then $3::int else p.stock end
+       from cur
+      where p.id = $1
+      returning ($3::int <> $4::int and cur.stock <> $4::int) as conflict`,
+    [p.data.id, p.data.price, p.data.stock, p.data.stock_was],
+  );
   refresh();
   revalidatePath("/admin/products");
+  if (row?.conflict) redirect("/admin/products?stockchanged=1");
 }
 
 export async function deleteProductAction(formData: FormData) {

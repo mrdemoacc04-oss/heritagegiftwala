@@ -31,7 +31,7 @@ export default async function EditProductPage({ params, searchParams }: { params
         }
       />
       {saved && <p className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">Product added. It&apos;s live on the shop within moments.</p>}
-      <ProductForm action={updateProductAction.bind(null, id)} initial={p} categories={categories} submitLabel="Save changes" />
+      <ProductForm action={updateProductAction.bind(null, id)} initial={p} categories={categories} submitLabel="Save changes" stockWas={p.stock} />
       {!p.hidden && (
         <form action={deleteProductAction} className="mt-10 border-t border-stone-300 pt-6">
           <input type="hidden" name="id" value={p.id} />

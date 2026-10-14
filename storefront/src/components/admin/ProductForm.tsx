@@ -28,11 +28,14 @@ export function ProductForm({
   initial,
   categories,
   submitLabel,
+  stockWas,
 }: {
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   initial: ProductValues;
   categories: { handle: string; title: string }[];
   submitLabel: string;
+  /** The stock when this page was opened (edit only): lets the server refuse to undo sales made since. */
+  stockWas?: number;
 }) {
   const [title, setTitle] = useState(initial.title);
   const [price, setPrice] = useState(String(initial.price));
@@ -46,6 +49,7 @@ export function ProductForm({
 
   return (
     <ActionForm action={action} className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+      {stockWas !== undefined && <input type="hidden" name="stock_was" value={stockWas} />}
       <div className="space-y-6">
         <Card title="The basics">
           <div className="grid gap-4">

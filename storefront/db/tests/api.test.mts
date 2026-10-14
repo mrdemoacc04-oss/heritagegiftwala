@@ -40,13 +40,18 @@ async function call(path: string, o: Opts = {}) {
 }
 const cookieFrom = (setCookie: string[]) => setCookie.map((c) => c.split(";")[0]).join("; ");
 
-const person = (n = run) => ({
-  email: `buyer-${n}@example.com`, phone: "9876543210", name: "Asha Patel", address1: "12 Rose Society", address2: "", city: "Patan", state: "Gujarat", pincode: "384265",
-});
+let seq = 0;
+/** A phone number nobody has used before, even in an earlier run against the same scratch database. */
+const uniquePhone = () => `9${String(100000000 + (parseInt(run, 36) % 700000000) + ++seq * 37).slice(0, 9)}`;
+/** A different household every time: its own email, phone and address (the shop limits open orders per person). */
+const person = (n = run) => {
+  seq += 1;
+  return { email: `buyer-${n}-${seq}@example.com`, phone: uniquePhone(), name: "Asha Patel", address1: `${seq} Rose Society ${n}`, address2: "", city: "Patan", state: "Gujarat", pincode: "384265" };
+};
 
 let productId = "";
 before(async () => {
-  productId = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API test product', 500, 40) returning id", [`api-${run}`]))[0].id;
+  productId = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API test product', 500, 600) returning id", [`api-${run}`]))[0].id;
   await q("update shop.settings set shipping_flat=79, shipping_express=149, free_shipping_from=999");
 });
 after(() => db.end());
@@ -127,7 +132,7 @@ describe("quote and order", () => {
 
   test("odd-looking text is stored as plain text, never run", async () => {
     const name = `Robert'); DROP TABLE shop.orders;-- <script>alert(1)</script>`;
-    const r = await call("/api/orders", { body: { items: items(), shipping: "standard", contact: { ...person(`sql-${run}`), name, address1: "<img src=x onerror=alert(1)>" } } });
+    const r = await call("/api/orders", { body: { items: items(), shipping: "standard", contact: { ...person(`sql-${run}`), name, address1: `<img src=x onerror=alert(1)> ${run}` } } });
     assert.equal(r.status, 201);
     const row = (await q("select name, address1 from shop.orders where number=$1", [r.json.order.number]))[0];
     assert.equal(row.name, name);
@@ -135,9 +140,10 @@ describe("quote and order", () => {
   });
 
   test("gift wrap details are checked against the real options", async () => {
-    const bad = [{ product_id: productId, quantity: 1, wrap: { paper: "x".repeat(500), ribbon: "red", note: "hi" } }];
+    const wrapId = (await q("insert into shop.products (handle, title, price, track_stock, stock, hidden) values ($1, 'API gift wrap', 49, false, 0, true) returning id", [`api-wrap-${run}`]))[0].id;
+    const bad = [{ product_id: wrapId, quantity: 1, wrap: { paper: "x".repeat(500), ribbon: "red", note: "hi" } }];
     assert.equal((await call("/api/quote", { body: { items: bad, shipping: "standard" } })).status, 400);
-    const ok = [{ product_id: productId, quantity: 1, wrap: { paper: "polka-lagoon", ribbon: "red", note: "Happy birthday!\u0000\u0007" } }];
+    const ok = [{ product_id: wrapId, quantity: 1, wrap: { paper: "polka-lagoon", ribbon: "red", note: "Happy birthday!\u0000\u0007" } }];
     const r = await call("/api/orders", { body: { items: ok, shipping: "standard", contact: person(`wrap-${run}`) } });
     assert.equal(r.status, 201);
     const w = (await q("select wrap from shop.order_items i join shop.orders o on o.id=i.order_id where o.number=$1", [r.json.order.number]))[0].wrap;
@@ -164,6 +170,145 @@ describe("quote and order", () => {
     const codes = [];
     for (let i = 0; i < 30; i++) codes.push((await call("/api/quote", { ip, body: { items: items(), shipping: "standard", coupon: `GUESS${i}` } })).status);
     assert.ok(codes.includes(429), "many wrong guesses must hit a limit");
+  });
+});
+
+describe("coupon and wrap tricks through the real API", () => {
+  test("a one-use coupon can't be used twice by the same person, even with dots or +tags in their email", async () => {
+    const code = `ONCE${run.toUpperCase()}`;
+    await q("insert into shop.coupons (code, kind, value, once_per_email) values ($1, 'fixed', 100, true)", [code]);
+    const mine = { ...person(`once-${run}`), email: `Sam.Jones.${run}@gmail.com`, phone: uniquePhone() };
+    const first = await call("/api/orders", { body: { items: items(2), shipping: "standard", coupon: code, contact: mine } });
+    assert.equal(first.status, 201, first.text);
+    for (const email of [`samjones${run}@gmail.com`, `sam.jones.${run}+again@gmail.com`]) {
+      const again = await call("/api/orders", { body: { items: items(2), shipping: "standard", coupon: code, contact: { ...mine, email, phone: uniquePhone() } } });
+      assert.equal(again.status, 409, `reused with ${email}`);
+      assert.equal(again.json.code, "BAD_COUPON");
+    }
+    const samePhone = await call("/api/orders", { body: { items: items(2), shipping: "standard", coupon: code, contact: { ...mine, email: `fresh-${run}@example.com` } } });
+    assert.equal(samePhone.status, 409, "reused with a new email but the same phone");
+    const stranger = await call("/api/orders", { body: { items: items(2), shipping: "standard", coupon: code, contact: { ...person(`other-${run}`), phone: uniquePhone() } } });
+    assert.equal(stranger.status, 201, "a different person still gets it");
+  });
+
+  test("a failed order with a refused coupon leaves no trace: stock and coupon counter untouched", async () => {
+    const code = `TRACE${run.toUpperCase()}`;
+    await q("insert into shop.coupons (code, kind, value, once_per_email) values ($1, 'fixed', 50, true)", [code]);
+    const who = { ...person(`trace-${run}`), phone: uniquePhone() };
+    await call("/api/orders", { body: { items: items(1), shipping: "standard", coupon: code, contact: who } });
+    const stock = (await q("select stock from shop.products where id=$1", [productId]))[0].stock;
+    const used = (await q("select used from shop.coupons where code=$1", [code]))[0].used;
+    const refused = await call("/api/orders", { body: { items: items(5), shipping: "standard", coupon: code, contact: who } });
+    assert.equal(refused.status, 409);
+    assert.equal((await q("select stock from shop.products where id=$1", [productId]))[0].stock, stock);
+    assert.equal((await q("select used from shop.coupons where code=$1", [code]))[0].used, used);
+  });
+
+  test("gift-wrap details on an ordinary product are dropped, so nobody gets free gift wrap", async () => {
+    const r = await call("/api/orders", { body: { items: [{ product_id: productId, quantity: 1, wrap: { paper: "polka-lagoon", ribbon: "red", note: "wrap it free" } }], shipping: "standard", contact: person(`freewrap-${run}`) } });
+    assert.equal(r.status, 201);
+    const row = (await q("select i.wrap from shop.order_items i join shop.orders o on o.id=i.order_id where o.number=$1", [r.json.order.number]))[0];
+    assert.equal(row.wrap, null);
+  });
+
+  test("the delivery fee can't be dodged: free delivery is judged after the coupon", async () => {
+    const big = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API big ticket', 1000, 50) returning id", [`api-big-${run}`]))[0].id;
+    const code = `HALF${run.toUpperCase()}`;
+    await q("insert into shop.coupons (code, kind, value, once_per_email) values ($1, 'percent', 50, false)", [code]);
+    const r = await call("/api/quote", { body: { items: [{ product_id: big, quantity: 1 }], shipping: "standard", coupon: code } });
+    assert.deepEqual([r.json.subtotal, r.json.discount, r.json.shipping_fee, r.json.total], [1000, 500, 79, 579]);
+  });
+});
+
+describe("protections added after the security review", () => {
+  test("one web order can't be huge: item count, value and share of a product's stock are capped", async () => {
+    const big = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API cap product', 100, 600) returning id", [`api-cap-${run}`]))[0].id;
+    const tooMany = await call("/api/orders", { body: { items: [{ product_id: big, quantity: 20 }, { product_id: big, quantity: 11 }], shipping: "standard", contact: person() } });
+    assert.equal(tooMany.status, 409);
+    assert.equal(tooMany.json.code, "ORDER_TOO_BIG");
+    const dear = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API dear product', 30000, 50) returning id", [`api-dear-${run}`]))[0].id;
+    assert.equal((await call("/api/orders", { body: { items: [{ product_id: dear, quantity: 2 }], shipping: "standard", contact: person() } })).json.code, "ORDER_TOO_BIG");
+    const few = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API few product', 10, 10) returning id", [`api-few-${run}`]))[0].id;
+    const half = await call("/api/orders", { body: { items: [{ product_id: few, quantity: 6 }], shipping: "standard", contact: person() } });
+    assert.equal(half.json.code, "TOO_MANY_OF_ONE");
+    assert.equal((await q("select stock from shop.products where id=$1", [few]))[0].stock, 10, "a refused order takes nothing");
+    assert.equal((await call("/api/orders", { body: { items: [{ product_id: few, quantity: 5 }], shipping: "standard", contact: person() } })).status, 201);
+  });
+
+  test("the same person can't keep more than 3 orders open", async () => {
+    const me = person(`open-${run}`);
+    const ids: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await call("/api/orders", { body: { items: items(1), shipping: "standard", contact: me } });
+      assert.equal(r.status, 201, r.text);
+      ids.push(r.json.order.number);
+    }
+    const fourth = await call("/api/orders", { body: { items: items(1), shipping: "standard", contact: me } });
+    assert.equal(fourth.status, 409);
+    assert.equal(fourth.json.code, "TOO_MANY_OPEN");
+    assert.match(fourth.json.message, /orders on their way/);
+  });
+
+  test("a retried order (same idempotency key) is the same order, and stock is taken once", async () => {
+    const me = person(`idem-${run}`);
+    const idem = crypto.randomUUID();
+    const before = (await q("select stock from shop.products where id=$1", [productId]))[0].stock;
+    const a = await call("/api/orders", { body: { items: items(2), shipping: "standard", contact: me, idem_key: idem } });
+    const b = await call("/api/orders", { body: { items: items(2), shipping: "standard", contact: me, idem_key: idem } });
+    assert.equal(a.status, 201);
+    assert.equal(b.status, 201);
+    assert.equal(b.json.order.number, a.json.order.number);
+    assert.equal((await q("select stock from shop.products where id=$1", [productId]))[0].stock, before - 2);
+    const racers = await Promise.all(Array.from({ length: 5 }, () => call("/api/orders", { body: { items: items(1), shipping: "standard", contact: person(`idem2-${run}`), idem_key: crypto.randomUUID() } })));
+    assert.ok(racers.every((r) => r.status === 201 || r.status === 409));
+  });
+
+  test("if the price moved since the customer last saw it, they are told the new total instead of being charged it", async () => {
+    const r = await call("/api/orders", { body: { items: items(1), shipping: "standard", contact: person(), expected_total: 1 } });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, "PRICE_CHANGED");
+    assert.equal(r.json.new_total, 579);
+    assert.equal((await call("/api/orders", { body: { items: items(1), shipping: "standard", contact: person(), expected_total: 579 } })).status, 201);
+  });
+
+  test("walking order numbers for one email is stopped, whichever addresses the guesses come from", async () => {
+    const email = `walker-${run}@example.com`;
+    const statuses = [];
+    for (let i = 0; i < 18; i++) statuses.push((await call("/api/track", { body: { order_number: 5000 + i, email } })).status);
+    assert.equal(statuses.filter((s) => s === 404).length, 15);
+    assert.deepEqual(statuses.slice(15), [429, 429, 429]);
+  });
+
+  test("a burst of parallel tracking guesses for one email: exactly 15 are checked, the rest refused", async () => {
+    const email = `burstwalk-${run}@example.com`;
+    const results = await Promise.all(Array.from({ length: 30 }, (_, i) => call("/api/track", { ip: `10.99.${i}.5`, body: { order_number: 7000 + i, email } })));
+    assert.equal(results.filter((r) => r.status === 404).length, 15);
+    assert.equal(results.filter((r) => r.status === 429).length, 15);
+  });
+
+  test("a burst of parallel login guesses from one visitor can't all be tried (counted before the slow check)", async () => {
+    const email = `burst-${run}@example.com`;
+    await call("/api/account/register", { body: { first_name: "B", last_name: "B", email, phone: "", password: "a-long-enough-password" } });
+    const results = await Promise.all(Array.from({ length: 40 }, (_, i) => call("/api/account/login", { ip: "10.77.7.7", body: { email, password: `wrong-guess-number-${i}` } })));
+    const tried = results.filter((r) => r.status === 401).length;
+    assert.equal(tried, 8, `${tried} of 40 parallel guesses were checked; the limit is 8`);
+    assert.equal(results.filter((r) => r.status === 429).length, 32);
+  });
+
+  test("guesses spread over many addresses still hit a per-account ceiling (60 an hour)", async () => {
+    const email = `spread-${run}@example.com`;
+    await call("/api/account/register", { body: { first_name: "B", last_name: "B", email, phone: "", password: "a-long-enough-password" } });
+    const results = await Promise.all(Array.from({ length: 75 }, (_, i) => call("/api/account/login", { ip: `10.88.${i}.1`, body: { email, password: `wrong-guess-number-${i}` } })));
+    const tried = results.filter((r) => r.status === 401).length;
+    assert.equal(tried, 60, `${tried} guesses were checked; the account ceiling is 60 an hour`);
+  });
+
+  test("a signed-in customer keeps at most 10 sessions, however often they sign in", async () => {
+    const email = `sessions-${run}@example.com`;
+    await call("/api/account/register", { body: { first_name: "S", last_name: "S", email, phone: "", password: "a-long-enough-password" } });
+    for (let i = 0; i < 14; i++) await call("/api/account/login", { body: { email, password: "a-long-enough-password" } });
+    const n = (await q("select count(*)::int as n from shop.customer_sessions s join shop.customers c on c.id=s.customer_id where c.email=$1", [email]))[0].n;
+    assert.ok(n <= 10, `${n} sessions kept`);
   });
 });
 

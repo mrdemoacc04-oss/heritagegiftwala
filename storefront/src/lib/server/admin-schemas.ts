@@ -48,7 +48,7 @@ export const productForm = z
   })
   .transform((p) => ({ ...p, handle: slug.safeParse(p.handle || slugify(p.title)).data ?? "" }));
 
-export const quickEdit = z.object({ id: z.uuid(), price: money(), stock: z.coerce.number().int().min(0).max(100000) });
+export const quickEdit = z.object({ id: z.uuid(), price: money(), stock: z.coerce.number().int().min(0).max(100000), stock_was: z.coerce.number().int().min(0).max(100000) });
 
 export const couponForm = z
   .object({
@@ -58,6 +58,7 @@ export const couponForm = z
     min_subtotal: money(),
     max_uses: z.union([z.literal(""), z.coerce.number().int().min(1).max(1_000_000)]).transform((v) => (v === "" ? null : v)),
     expires_on: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).transform((v) => (v === "" ? null : v)),
+    once_per_email: checkbox,
   })
   .superRefine((c, ctx) => {
     if (c.kind === "percent" && c.value > 100) ctx.addIssue({ code: "custom", path: ["value"], message: "A percentage can't be more than 100" });

@@ -8,7 +8,7 @@ import { logoutAction } from "../_actions/auth";
 export const dynamic = "force-dynamic";
 
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
-  const admin = await requireAdmin();
+  const admin = await requireAdmin({ during: ["password", "2fa"] });
   const [{ n }] = await sql<{ n: number }>("select count(*)::int as n from shop.orders where status = 'placed'");
   return (
     <div className="mx-auto grid min-h-dvh max-w-[1400px] gap-6 px-4 py-4 lg:grid-cols-[220px_1fr] lg:px-6">
@@ -22,7 +22,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
           </Link>
         </div>
         <div className="mt-4">
-          <AdminNav newOrders={n} />
+          {admin.setupNeeded ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">Finish the set-up on this page to unlock the panel.</p> : <AdminNav newOrders={n} />}
         </div>
         <div className="mt-6 hidden border-t border-stone-300 pt-4 lg:block">
           <p className="truncate text-sm text-stone-600" title={admin.email}>

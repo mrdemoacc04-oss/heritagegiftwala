@@ -53,7 +53,15 @@ export const contact = z.object({
   pincode,
 });
 
-export const orderInput = quoteInput.extend({ contact });
+export const orderInput = quoteInput.extend({
+  contact,
+  /** One random id per checkout, so a double tap or a lost reply can never make two orders. */
+  idem_key: z.uuid().optional(),
+  /** The total the customer last saw; if the price has moved since, the order is refused instead of charging more. */
+  expected_total: z.number().int().min(0).max(100_000_000).optional(),
+  /** Answer from the bot check, when it is switched on. */
+  captcha: z.string().max(4096).optional(),
+});
 
 export const trackInput = z.object({
   order_number: z.union([z.string(), z.number()]).transform((v) => Number(String(v).replace(/\D/g, ""))).pipe(z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)),

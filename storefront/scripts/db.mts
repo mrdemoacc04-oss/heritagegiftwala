@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { cleanDatabaseUrl, pgSsl } from "../src/lib/server/pg-config.ts";
 import { products } from "../src/data/products.ts";
 import { categories } from "../src/data/categories.ts";
 
@@ -18,8 +19,7 @@ for (const file of [".env.local", ".env"]) {
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set (put it in storefront/.env.local).");
-const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
-const client = new pg.Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false } });
+const client = new pg.Client({ connectionString: cleanDatabaseUrl(url), ssl: pgSsl(url) });
 await client.connect();
 
 const task = process.argv[2];

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const ADMIN_COOKIE = process.env.NODE_ENV === "production" ? "__Host-hgw_admin" : "hgw_admin";
+// Pages a signed-out owner has to reach.
+const OPEN = new Set(["/admin/login", "/admin/login/verify", "/admin/forgot", "/admin/reset"]);
 
 /**
  * A quick first gate: visitors with no admin cookie never reach an admin page. This is only a
@@ -9,7 +11,7 @@ const ADMIN_COOKIE = process.env.NODE_ENV === "production" ? "__Host-hgw_admin" 
  */
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/admin") && pathname !== "/admin/login" && !req.cookies.has(ADMIN_COOKIE)) {
+  if (pathname.startsWith("/admin") && !OPEN.has(pathname.replace(/\/+$/, "")) && !req.cookies.has(ADMIN_COOKIE)) {
     return NextResponse.redirect(new URL("/admin/login", req.url));
   }
   const res = NextResponse.next();
