@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -10,10 +10,19 @@ import { passwordForm } from "@/lib/server/admin-schemas";
 
 export type FormState = { error?: string; ok?: string };
 
+const TROUBLE = "The shop couldn't reach its database just now. Please try again in a minute. If it keeps happening, the site's setup needs attention (see /api/health).";
+
 export async function loginAction(_: FormState, formData: FormData): Promise<FormState> {
   const parsed = z.object({ email: z.string().max(254), password: z.string().max(200) }).safeParse({ email: formData.get("email"), password: formData.get("password") });
   if (!parsed.success) return { error: "Enter your email and password." };
-  const result = await adminLogin(parsed.data.email, parsed.data.password);
+  let result: Awaited<ReturnType<typeof adminLogin>>;
+  try {
+    result = await adminLogin(parsed.data.email, parsed.data.password);
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[login]", e instanceof Error ? e.message : e);
+    return { error: TROUBLE };
+  }
   if ("error" in result) return { error: result.error };
   redirect(result.next === "verify" ? "/admin/login/verify" : "/admin");
 }
@@ -21,7 +30,14 @@ export async function loginAction(_: FormState, formData: FormData): Promise<For
 export async function verifyCodeAction(_: FormState, formData: FormData): Promise<FormState> {
   const code = z.string().max(40).safeParse(formData.get("code"));
   if (!code.success) return { error: "Enter the 6-digit code." };
-  const result = await adminVerifySecondStep(code.data);
+  let result: Awaited<ReturnType<typeof adminVerifySecondStep>>;
+  try {
+    result = await adminVerifySecondStep(code.data);
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[verify]", e instanceof Error ? e.message : e);
+    return { error: TROUBLE };
+  }
   if ("error" in result) return { error: result.error };
   redirect("/admin");
 }
@@ -65,7 +81,14 @@ export async function resetPasswordAction(_: FormState, formData: FormData): Pro
   const confirm = z.string().max(200).safeParse(formData.get("confirm"));
   if (!token.success || !next.success || !confirm.success) return { error: "Please fill in both boxes." };
   if (next.data !== confirm.data) return { error: "The two passwords don't match." };
-  const problem = await completePasswordReset(token.data, next.data);
+  let problem: string | null;
+  try {
+    problem = await completePasswordReset(token.data, next.data);
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[reset]", e instanceof Error ? e.message : e);
+    return { error: TROUBLE };
+  }
   if (problem) return { error: problem };
   redirect("/admin/login?reset=1");
 }

@@ -61,6 +61,16 @@ Open `https://www.heritagegiftwala.in/admin` and sign in with the email and temp
 
 After that, signing in is: email + password, then the code from the app. See [SECURITY.md](SECURITY.md) for everything that protects the panel.
 
+### Check it is wired up
+
+After a deploy, open `https://www.heritagegiftwala.in/api/health`. It lists each part and says `ok` / `connected` or what is missing (it never shows a value):
+
+```json
+{"appSecret":"ok","adminAllowList":"ok","photoStorage":"ok","database":"connected"}
+```
+
+If it says the database is "not configured", the site is still showing its built-in sample products and `/admin` cannot work: add `DATABASE_URL` and **Redeploy** (variables only apply to deployments made after they were saved; untick "Use existing Build Cache"). If you connected Supabase through Vercel's Supabase integration, it adds `POSTGRES_URL` (the same pooled address) and the site accepts that too, but you must still add `APP_SECRET` and `ADMIN_ALLOWED_EMAILS` yourself, because the integration doesn't know about them.
+
 **`APP_SECRET` must be the same everywhere that uses this database.** It encrypts the owner's two-step secret, so if you ever run the site on your own computer against the live database, put the same `APP_SECRET` in `storefront/.env.local` as on Vercel. Otherwise a two-step set-up made on one side can't be read on the other and the owner is locked out (fixable with `npm run admin:create -- you@email.com --reset-2fa`). The simplest rule: do the first sign-in and the two-step set-up on the live site.
 
 The database connection to Supabase is encrypted and checked against Supabase's own certificate, which the app already carries; there is nothing to configure.

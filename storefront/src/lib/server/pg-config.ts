@@ -36,11 +36,17 @@ o/bKiIz+Fq8=
  *  - DATABASE_SSL_CA overrides the certificate; DATABASE_SSL_VERIFY=false is an emergency switch (for example if
  *    Supabase ever replaces its root before this file is updated). It is loud on purpose.
  */
+/**
+ * The database address. DATABASE_URL is what this app is documented to use; the Vercel–Supabase integration instead
+ * provides POSTGRES_URL (the same pooled connection), so that is accepted too.
+ */
+export const databaseUrl = (): string | undefined => process.env.DATABASE_URL?.trim() || process.env.POSTGRES_URL?.trim() || undefined;
+
 /** Removes ssl-related options from a connection address, so nothing in it can switch off or weaken the checks below. */
 export function cleanDatabaseUrl(url: string): string {
   try {
     const u = new URL(url);
-    for (const key of ["sslmode", "ssl", "sslcert", "sslkey", "sslrootcert", "uselibpqcompat"]) u.searchParams.delete(key);
+    for (const key of ["sslmode", "ssl", "sslcert", "sslkey", "sslrootcert", "uselibpqcompat", "supa"]) u.searchParams.delete(key);
     return u.toString();
   } catch {
     return url;

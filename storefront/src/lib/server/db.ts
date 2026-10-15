@@ -1,6 +1,6 @@
 import "server-only";
 import { Pool, type QueryResultRow } from "pg";
-import { cleanDatabaseUrl, pgSsl } from "./pg-config";
+import { cleanDatabaseUrl, databaseUrl, pgSsl } from "./pg-config";
 
 /**
  * One small connection pool per server instance. On Vercel use Supabase's "Transaction pooler"
@@ -9,7 +9,7 @@ import { cleanDatabaseUrl, pgSsl } from "./pg-config";
 const globalForPool = globalThis as unknown as { __shopPool?: Pool };
 
 function create(): Pool {
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   if (!url) throw new Error("DATABASE_URL is not set.");
   const created = new Pool({
     // Any sslmode=… in the address would override the verified connection below, so it is stripped first.
@@ -29,7 +29,7 @@ function create(): Pool {
 
 export const pool = () => (globalForPool.__shopPool ??= create());
 
-export const dbEnabled = () => Boolean(process.env.DATABASE_URL);
+export const dbEnabled = () => Boolean(databaseUrl());
 
 export async function sql<T extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<T[]> {
   return (await pool().query<T>(text, params)).rows;
