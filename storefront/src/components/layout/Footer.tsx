@@ -6,7 +6,7 @@ import { Ribbon } from "@/components/ui/Ribbon";
 import { site } from "@/lib/site";
 import type { Category } from "@/lib/types";
 
-export function Footer({ categories }: { categories: Category[] }) {
+export function Footer({ categories, showBudgets }: { categories: Category[]; /** Only offer the "under ₹500" shelf once some products carry a price. */ showBudgets: boolean }) {
   return (
     <footer className="relative mt-32">
       {/* the panda hangs over the edge, watching your cursor */}
@@ -69,7 +69,7 @@ export function Footer({ categories }: { categories: Category[] }) {
           <FooterCol title="Gifting">
             <FooterLink href="/gift-finder">Gift Finder</FooterLink>
             <FooterLink href="/#hamper-builder">Build a Hamper</FooterLink>
-            <FooterLink href="/shop?max=500">Gifts under ₹500</FooterLink>
+            {showBudgets && <FooterLink href="/shop?max=500">Gifts under ₹500</FooterLink>}
             <FooterLink href="/wishlist">Your wishlist</FooterLink>
           </FooterCol>
           <FooterCol title="Help">

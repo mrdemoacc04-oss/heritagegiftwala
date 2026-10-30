@@ -18,7 +18,7 @@ const pool = new pg.Pool({ connectionString: url, max: 20 });
 const q = (text: string, params: unknown[] = []) => pool.query(text, params);
 const one = async (text: string, params: unknown[] = []) => (await q(text, params)).rows[0];
 
-type Item = { product_id: string; quantity: number; wrap?: unknown };
+type Item = { product_id: string; quantity: number };
 const who = { email: "Asha@Example.com", phone: "9876543210", name: "Asha Patel", address1: "12 Rose Society", city: "Patan", state: "Gujarat", pincode: "384265" };
 // Tests place orders as the owner's "take an order" screen does (source: admin), which is exempt from the web-only
 // limits. The web-only rules have their own tests below that say source: "web".
@@ -109,9 +109,9 @@ describe("stock", () => {
   });
 
   test("untracked products (services) never run out", async () => {
-    const wrap = await product({ track_stock: false, stock: 0 });
-    await order([{ product_id: wrap, quantity: 7 }]);
-    assert.equal(await stockOf(wrap), 0);
+    const service = await product({ track_stock: false, stock: 0 });
+    await order([{ product_id: service, quantity: 7 }]);
+    assert.equal(await stockOf(service), 0);
   });
 
   test("two buyers racing for the last item: exactly one wins", async () => {
@@ -199,14 +199,12 @@ describe("order lifecycle and tracking", () => {
 
   test("tracking needs the right email, and shows no phone or street address", async () => {
     const a = await product({ stock: 10, price: 250 });
-    const wrapService = await product({ track_stock: false, stock: 0, price: 49 });
-    await q("update shop.products set hidden = true where id = $1", [wrapService]);
-    const o = await order([{ product_id: a, quantity: 2 }, { product_id: wrapService, quantity: 1, wrap: { paper: "kraft-stars" } }]);
+    const o = await order([{ product_id: a, quantity: 2 }]);
     const hit = (await one("select shop.track_order($1, $2) as t", [o.number, "ASHA@example.com"])).t;
     assert.equal(hit.number, Number(o.number));
     assert.equal(hit.stage, "placed");
     assert.equal(hit.first_name, "Asha");
-    assert.ok(hit.items.some((i: { gift_wrapped: boolean }) => i.gift_wrapped), "the paid gift-wrap line shows as gift wrapped");
+    assert.equal(hit.items[0].quantity, 2);
     const flat = JSON.stringify(hit);
     for (const secret of ["9876543210", "Rose Society", "384265", "asha@example.com"]) assert.ok(!flat.includes(secret), `leaked ${secret}`);
 
@@ -279,14 +277,40 @@ describe("cheating attempts", () => {
     assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
   });
 
-  test("gift-wrap details only count on the paid gift-wrap service, never on an ordinary product", async () => {
-    const plain = await product({ price: 300, stock: 10 });
-    const wrap = await product({ price: 49, track_stock: false, stock: 0 });
-    await q("update shop.products set hidden = true where id = $1", [wrap]);
-    const details = { paper: "kraft-stars", ribbon: "red", note: "free wrap please" };
-    const r = await price([{ product_id: plain, quantity: 1, wrap: details }, { product_id: wrap, quantity: 1, wrap: details }]);
-    assert.equal(r.lines[0].wrap, null, "the free-wrap trick is ignored");
-    assert.deepEqual(r.lines[1].wrap, details);
+  test("a product without a price is quoted on WhatsApp: it can't go into an order, and nothing else is affected", async () => {
+    const unpriced = await product({ price: null, title: "Brass Diya" });
+    const priced = await product({ price: 300, stock: 10 });
+    await failsWith(() => price([{ product_id: unpriced, quantity: 1 }]), "NOT_PRICED");
+    await failsWith(() => order([{ product_id: priced, quantity: 1 }, { product_id: unpriced, quantity: 1 }]), "NOT_PRICED");
+    assert.equal(await stockOf(priced), 10, "a refused order must not touch stock");
+    assert.equal((await price([{ product_id: priced, quantity: 1 }])).subtotal, 300);
+    // Putting a price on it makes it orderable again.
+    await q("update shop.products set price = 120 where id = $1", [unpriced]);
+    assert.equal((await price([{ product_id: unpriced, quantity: 2 }])).subtotal, 240);
+  });
+
+  test("a crossed-out 'was' price needs a price, and a price may be empty", async () => {
+    const id = await product({ price: 100 });
+    await q("update shop.products set compare_at = 150 where id = $1", [id]);
+    await assert.rejects(() => q("update shop.products set price = null where id = $1", [id]), /products_compare_needs_price/);
+    await q("update shop.products set price = null, compare_at = null where id = $1", [id]);
+    assert.equal((await one("select price from shop.products where id = $1", [id])).price, null);
+  });
+
+  test("the one-time WhatsApp step removes gift wrap and clears prices once, then leaves later prices alone", async () => {
+    const step = fs.readFileSync(path.join(here, "../steps/2026-10-whatsapp-ordering.sql"), "utf8");
+    const wrap = await product({ handle: "gift-wrap", price: 49 });
+    const keep = await product({ price: 800 });
+    await q("update shop.products set compare_at = 999 where id = $1", [keep]);
+    await q("delete from shop.applied_steps where name = '2026-10-whatsapp-ordering'");
+    await q(step);
+    assert.equal((await q("select 1 from shop.products where id = $1", [wrap])).rowCount, 0, "the gift-wrap product is gone");
+    const cleared = await one("select price, compare_at from shop.products where id = $1", [keep]);
+    assert.deepEqual([cleared.price, cleared.compare_at], [null, null]);
+    // The owner types a price in; applying the migrations again must not wipe it.
+    await q("update shop.products set price = 650 where id = $1", [keep]);
+    await q(step);
+    assert.equal((await one("select price from shop.products where id = $1", [keep])).price, 650);
   });
 
   test("normalize_email treats +tags and Gmail dots as the same mailbox", async () => {
@@ -516,14 +540,6 @@ describe("fixes from the second review", () => {
       const r = await order([{ product_id: a, quantity: 1 }], { ...stranger(), address1, pincode: "384265", coupon: "NOKEY" });
       assert.equal(r.discount, 10);
     }
-  });
-
-  test("gift-wrap lines don't count toward the 30-item cap", async () => {
-    const plain = await product({ price: 100, stock: 500 });
-    const wrap = await product({ price: 49, track_stock: false, stock: 0 });
-    await q("update shop.products set hidden = true where id = $1", [wrap]);
-    const r = await webOrder([{ product_id: plain, quantity: 20 }, { product_id: plain, quantity: 8 }, { product_id: wrap, quantity: 20 }]);
-    assert.equal(r.subtotal, 2800 + 980);
   });
 
   test("parallel orders that share only a phone number, or only an address, still can't pass the open-order limit", async () => {

@@ -7,8 +7,8 @@ export const metadata = { title: "Take an order" };
 
 export default async function NewOrderPage() {
   await requireAdmin();
-  const products = await sql<{ id: string; title: string; price: number; stock: number; track_stock: boolean }>(
-    "select id, title, price, stock, track_stock from shop.products where status = 'active' order by hidden, title",
+  const products = await sql<{ id: string; title: string; price: number | null; stock: number; track_stock: boolean }>(
+    "select id, title, price, stock, track_stock from shop.products where status = 'active' order by title",
   );
   return (
     <>

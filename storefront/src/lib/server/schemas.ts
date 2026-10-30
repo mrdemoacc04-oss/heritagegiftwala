@@ -1,6 +1,5 @@
 import "server-only";
 import { z } from "zod";
-import { papers, ribbons } from "@/lib/wrap";
 
 /** Removes control characters (tabs and newlines included unless `multiline`), then trims. */
 export const clean = (s: string, multiline = false) =>
@@ -20,20 +19,9 @@ export const pincode = z.string().trim().pipe(z.string().regex(/^\d{6}$/, "Enter
 
 const couponCode = z.string().trim().toUpperCase().pipe(z.string().regex(/^[A-Z0-9_-]{3,24}$/));
 
-const paperIds = papers.map((p) => p.id);
-const ribbonIds = ribbons.map((r) => r.id);
-
 export const cartItem = z.object({
   product_id: z.uuid(),
   quantity: z.number().int().min(1).max(20),
-  wrap: z
-    .object({
-      paper: z.string().refine((v) => paperIds.includes(v)),
-      ribbon: z.string().refine((v) => ribbonIds.includes(v)),
-      note: z.string().max(200).transform((s) => clean(s, true)),
-    })
-    .nullish()
-    .transform((w) => w ?? null),
 });
 
 export const quoteInput = z.object({

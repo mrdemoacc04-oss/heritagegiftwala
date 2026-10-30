@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/server/admin-auth";
 
 export const metadata = { title: "Products" };
 
-type Row = { id: string; title: string; handle: string; price: number; stock: number; track_stock: boolean; status: string; hidden: boolean; image: string; tint: string; categories: string[] };
+type Row = { id: string; title: string; handle: string; price: number | null; stock: number; track_stock: boolean; status: string; image: string; tint: string; categories: string[] };
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ q?: string; show?: string; stockchanged?: string }> }) {
   await requireAdmin();
@@ -16,10 +16,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const show = ["low", "draft"].includes(sp.show ?? "") ? sp.show! : "";
   const like = `%${q.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
   const rows = await sql<Row>(
-    `select id, title, handle, price, stock, track_stock, status, hidden, image, tint, categories from shop.products
+    `select id, title, handle, price, stock, track_stock, status, image, tint, categories from shop.products
       where ($1 = '' or lower(title) like $2 or handle like $2)
         and ($3 = '' or ($3 = 'draft' and status = 'draft') or ($3 = 'low' and track_stock and stock <= 3 and status = 'active'))
-      order by hidden, status, rank, title`,
+      order by status, rank, title`,
     [q, like, show],
   );
 
@@ -27,7 +27,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     <>
       <PageTitle
         title="Products"
-        hint="Change a price or the stock right in the list and press Save on that row. Click a name to edit everything else."
+        hint="Change a price or the stock right in the list and press Save on that row. Leave a price empty to show no price: customers then ask for it on WhatsApp. Click a name to edit everything else."
         actions={<Link href="/admin/products/new" className={buttonClass("primary")}>Add a product</Link>}
       />
       {sp.stockchanged && (
@@ -69,7 +69,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         {p.image && <img src={p.image} alt="" className="size-9 object-contain" referrerPolicy="no-referrer" loading="lazy" />}
                       </span>
-                      <span className="font-semibold underline-offset-4 hover:underline">{p.title}{p.hidden && <span className="ml-2 font-normal text-stone-500">(service)</span>}</span>
+                      <span className="font-semibold underline-offset-4 hover:underline">{p.title}</span>
                     </Link>
                   </td>
                   <td className="px-4 py-2">
@@ -79,7 +79,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                     <form action={quickEditAction} className="flex items-center gap-3 px-4 py-2">
                       <input type="hidden" name="id" value={p.id} />
                       <input type="hidden" name="stock_was" value={p.stock} />
-                      <input name="price" type="number" inputMode="numeric" min={0} max={1000000} defaultValue={p.price} aria-label={`Price of ${p.title}`} className={`${inputClass} w-28`} />
+                      <input name="price" type="number" inputMode="numeric" min={0} max={1000000} defaultValue={p.price ?? ""} placeholder="no price" aria-label={`Price of ${p.title} (empty means no price is shown)`} className={`${inputClass} w-28`} />
                       {p.track_stock ? (
                         <input name="stock" type="number" inputMode="numeric" min={0} max={100000} defaultValue={p.stock} aria-label={`Stock of ${p.title}`} className={`${inputClass} w-24`} />
                       ) : (

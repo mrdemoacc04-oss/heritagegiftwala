@@ -1,6 +1,8 @@
 # Client source material stays local (private, and large)
 /WhatsApp Image *.jpeg
 /Screen Recording *.mov
+/Raw assets/
+/image of store.jpeg
 /logo.png
 # Full-size gpt-image masters; web-sized copies live in storefront/public/products
 /design/studio/

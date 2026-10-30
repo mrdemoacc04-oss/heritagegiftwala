@@ -22,7 +22,7 @@ function fromForm(formData: FormData) {
     handle: formData.get("handle") ?? "",
     subtitle: formData.get("subtitle") ?? "",
     description: formData.get("description") ?? "",
-    price: formData.get("price"),
+    price: formData.get("price") ?? "",
     compare_at: formData.get("compare_at") ?? "",
     categories: formData.getAll("categories").map(String),
     recipients: formData.getAll("recipients").map(String),
@@ -85,11 +85,8 @@ export async function updateProductAction(id: string, _: FormState, formData: Fo
   if (!p.success) return { error: firstProblem(p.error) };
   const v = p.data;
   if (!(await knownCategories(v.categories))) return { error: "One of the chosen shelves doesn't exist." };
-  const current = await sql<{ handle: string; hidden: boolean }>("select handle, hidden from shop.products where id = $1", [id]);
-  if (!current[0]) return { error: "Product not found." };
-  // The gift-wrap service is found by its address, so that address stays put, and it can never be saved as a draft.
-  const handle = current[0].hidden ? current[0].handle : v.handle;
-  const status = current[0].hidden ? "active" : v.status;
+  if (!v.handle) return { error: "Give the product a name so it gets a web address." };
+  if (!(await sql("select 1 from shop.products where id = $1", [id])).length) return { error: "Product not found." };
   // The stock the owner SAW when the page opened. If customers have bought some since, saving would silently bring the
   // sold units back, so a stock figure that differs from what is now in the shop is only accepted when it was left alone.
   const was = z.coerce.number().int().min(0).max(100000).safeParse(formData.get("stock_was"));
@@ -102,7 +99,7 @@ export async function updateProductAction(id: string, _: FormState, formData: Fo
               image=$19, studio=$20, shelf=$21, image_fit=$22
         where id = $1 and ($23::int is null or $18 = $23 or stock = $23)
         returning id`,
-      [id, v.title, handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit, stockWas],
+      [id, v.title, v.handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, v.status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit, stockWas],
     );
     if (!rows.length) return { error: "The stock changed while you were editing (customers have bought some). Nothing was saved. Reload this page and try again." };
   } catch (e) {
@@ -119,12 +116,13 @@ export async function quickEditAction(formData: FormData) {
   await requireAdmin();
   const p = quickEdit.safeParse(Object.fromEntries(formData));
   if (!p.success) return;
-  // The price is always saved. The stock figure is only applied if it is still what the owner saw (or was left alone),
+  // The price is always saved (an empty price means "no price shown"). The stock figure is only applied if it is still what the owner saw (or was left alone),
   // otherwise it would undo sales made since the page opened.
   const [row] = await sql<{ conflict: boolean }>(
     `with cur as (select stock from shop.products where id = $1 for update)
      update shop.products p
         set price = $2::int,
+            compare_at = case when $2::int is null then null else p.compare_at end,
             stock = case when $3::int = $4::int then p.stock when cur.stock = $4::int then $3::int else p.stock end
        from cur
       where p.id = $1
@@ -141,7 +139,7 @@ export async function deleteProductAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!/^[0-9a-f-]{36}$/.test(id)) return;
   // Past orders keep their own copy of the name, price and photo, so deleting a product never changes history.
-  await sql("delete from shop.products where id = $1 and not hidden", [id]);
+  await sql("delete from shop.products where id = $1", [id]);
   refresh();
   redirect("/admin/products");
 }

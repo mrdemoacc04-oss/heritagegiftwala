@@ -11,7 +11,7 @@ export default async function NewProductPage() {
   const categories = await sql<{ handle: string; title: string }>("select handle, title from shop.categories order by sort, title");
   return (
     <>
-      <PageTitle title="Add a product" hint="Fill in the name, price and a photo. Everything else is optional and can be changed later." />
+      <PageTitle title="Add a product" hint="Fill in the name and a photo. The price is optional: leave it empty and customers ask for it on WhatsApp. Everything else can be changed later." />
       <ProductForm action={createProductAction} initial={blankProduct} categories={categories} submitLabel="Add product" />
     </>
   );

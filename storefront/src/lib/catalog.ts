@@ -14,7 +14,7 @@ export const CATALOG_TAG = "catalog";
 const REFRESH_SECONDS = 60;
 
 type ProductRow = {
-  id: string; handle: string; title: string; subtitle: string; description: string; price: number; compare_at: number | null;
+  id: string; handle: string; title: string; subtitle: string; description: string; price: number | null; compare_at: number | null;
   categories: string[]; recipients: string[]; occasions: string[]; details: string[]; tint: string; badge: string; rank: number;
   is_new: boolean; hidden: boolean; track_stock: boolean; stock: number; image: string; studio: string; shelf: string; image_fit: "contain" | "cover";
 };
@@ -26,7 +26,7 @@ const fromRow = (r: ProductRow): Product => ({
   subtitle: r.subtitle,
   description: r.description,
   price: r.price,
-  compareAtPrice: r.compare_at && r.compare_at > r.price ? r.compare_at : undefined,
+  compareAtPrice: r.price !== null && r.compare_at && r.compare_at > r.price ? r.compare_at : undefined,
   categories: r.categories,
   recipients: r.recipients as Recipient[],
   occasions: r.occasions as Occasion[],
@@ -77,7 +77,7 @@ export const getAllProducts = cache(async (): Promise<Product[]> => {
   return liveProducts();
 });
 
-/** Everything shoppers can browse (the gift-wrap service product stays out of listings). */
+/** Everything shoppers can browse (a product marked hidden stays out of listings). */
 export const getProducts = cache(async () => (await getAllProducts()).filter((p) => !p.hidden).sort((a, b) => a.rank - b.rank));
 
 export const getProduct = cache(async (handle: string) => (await getAllProducts()).find((p) => p.handle === handle));

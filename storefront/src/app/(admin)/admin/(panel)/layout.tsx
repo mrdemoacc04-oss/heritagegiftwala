@@ -3,6 +3,7 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { buttonClass } from "@/components/admin/ui";
 import { requireAdmin } from "@/lib/server/admin-auth";
 import { sql } from "@/lib/server/db";
+import { site } from "@/lib/site";
 import { logoutAction } from "../_actions/auth";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
           <Link href="/admin" className="block text-lg font-bold tracking-tight">
             Gift Wala <span className="font-normal text-stone-500">control panel</span>
           </Link>
-          <Link href="/" target="_blank" className="text-sm font-semibold text-stone-600 underline underline-offset-4 hover:text-stone-900 lg:mt-1 lg:inline-block">
+          <Link href={site.url} target="_blank" className="text-sm font-semibold text-stone-600 underline underline-offset-4 hover:text-stone-900 lg:mt-1 lg:inline-block">
             View shop ↗
           </Link>
         </div>

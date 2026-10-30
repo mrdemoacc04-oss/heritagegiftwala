@@ -1,6 +1,8 @@
 # Running the shop: owner's guide
 
-Your control panel is at **`/admin`** on your website (for example `https://www.heritagegiftwala.in/admin`).
+Your control panel is at **`https://admin.heritagegiftwala.in`** (once the one-time address set-up in DEPLOY.md section 5 is done; until then it is `/admin` on the website).
+
+**How customers buy:** they pick gifts, press **Buy on WhatsApp**, fill in their name, phone and address, and WhatsApp opens with the whole order already typed out (products, quantities, their details). When they press Send it arrives in your WhatsApp chat, and you confirm the price, delivery and payment there. No payment is taken on the website.
 
 **First sign-in:** use the email and temporary password you were given. The panel makes you choose your own password and set up **two-step sign-in** (scan a QR code with Google Authenticator or a similar app, then type the 6-digit code). It then shows **10 recovery codes: save them somewhere safe**. Each works once if you lose your phone.
 
@@ -25,9 +27,11 @@ Changes appear on the website straight away.
 ## Change a price or the stock
 **Products**: type the new price or stock number in that product's row and press **Save**. Done.
 
+**Prices are optional.** Leave a price **empty** and the shop shows no price on that product: customers press Buy on WhatsApp and you tell them the price in the chat. Type a price and it shows on the shop straight away. Clear it again to hide it. (The Butterfly Tumbler example: price empty = "Message us for today's price"; price 899 = "₹899".)
+
 ## Add a new product
 **Products → Add a product.**
-1. Give it a name, a price and how many you have.
+1. Give it a name and how many you have. The price is optional (see above).
 2. Upload a **main photo**. The preview on the right shows how it will look on the shop.
 3. Choose how the photo sits on its tile:
    - **Fill the tile**: for ordinary photos, such as ones from your phone. They are cropped to fit.
@@ -38,7 +42,7 @@ Changes appear on the website straight away.
 Set a product to **Draft** to hide it without deleting it. When stock reaches 0 the shop shows it as **sold out** by itself, and every order lowers the stock automatically.
 
 ## When an order arrives
-You see it on the Dashboard and under **Orders** (and by email if that is switched on). Open it, then:
+Orders arrive as WhatsApp messages. To follow one through (and let the customer track it), enter it under **Orders → Take an order**; it then shows on the Dashboard and under **Orders**. Open it, then:
 1. **Mark as packed** when it is ready.
 2. Enter the **courier** and **tracking number** (and link, if there is one) and press *Save courier details*. The customer sees this on their tracking page.
 3. **Mark as shipped** when the courier takes it.
@@ -47,7 +51,7 @@ You see it on the Dashboard and under **Orders** (and by email if that is switch
 **Cancel order** puts the items back into stock. A delivered order can't be cancelled.
 
 ## Take an order yourself
-**Orders → Take an order** (also on the Dashboard): for phone, WhatsApp or in-shop orders. Choose the products, enter the customer's details and place it. It follows the same rules as a website order: stock comes off and the customer can track it.
+**Orders → Take an order** (also on the Dashboard): for phone, WhatsApp or in-shop orders. Choose the products, enter the customer's details and place it. It follows the same rules as a website order: stock comes off and the customer can track it. A product with no price can't be put in an order: give it a price first.
 
 ## Coupons
 **Coupons → New coupon**: a code (like `DIWALI10`), percent or rupees off, an optional minimum, a limit on uses and a last day. Pause or delete a coupon any time. A coupon discounts the items, not the delivery.
@@ -58,10 +62,10 @@ By default each coupon works **once per customer** (the same email or phone numb
 **Delivery**: standard price, express price, and the order value from which standard delivery is free (0 turns free delivery off).
 
 ## How customers track an order
-**Track order** in the site menu: order number plus the email used at checkout. They see Placed → Packed → On its way → Delivered, and your courier details. Customers with an account also see their orders under **Account**.
+**Track order** in the site menu: order number plus the email on the order (orders you enter under **Take an order**). They see Placed → Packed → On its way → Delivered, and your courier details. Customers with an account also see their orders under **Account**.
 
 ## Good to know
-- Payment is **cash on delivery** for now. Online payment (UPI, cards) can be added later.
+- Payment is arranged on WhatsApp for now. Online payment (UPI, cards) can be added later.
 - Customers don't get automatic emails yet. They have their order number and the tracking page.
 - If a customer forgets their account password there is no reset-by-email yet. Ask the person who set up the site.
 - Lost your phone? Use one of your recovery codes at the code step, then set up two-step sign-in again under **My login**. If you have no codes either, the person who set up the site can reset it from their computer.

@@ -11,11 +11,9 @@ The browser sends only *which* products and *how many*. The database itself (fun
 - checks the coupon: it must exist, be switched on, not expired, not used up, and the order must meet its minimum. Every failure gives the same message, so codes can't be guessed one by one (and guesses are rate-limited);
 - by default a coupon works **once per customer**: the same mailbox (ignoring dots and `+tags`), phone number, delivery address (however it is typed) or signed-in account can't use it twice. The owner can untick this for a coupon meant to be reused;
 - locks the products while the order is saved, so two people can't both buy the last item, and two people can't both use a coupon's last remaining use;
-- accepts gift-wrap details only on the paid gift-wrap service, never as a free extra on another product;
 - refuses odd quantities (zero, negative, fractions, more than 20 of one line) and products that are drafts;
 - limits one web order to 30 items and ₹50,000, and to no more of any product than half its stock (never fewer than 3), so a single anonymous order can't empty the shelves. The owner's own "Take an order" screen is exempt;
 - allows each person (same email, phone number or delivery address) at most 3 unfinished orders at a time. Orders that share any of those go through one at a time, so parallel requests can't slip past. An address written in Gujarati, Hindi or just "12" carries too little Latin text to identify a household, so it is never matched (different households in one PIN code can't block each other);
-- doesn't count gift-wrap lines toward the 30-item cap;
 - treats a retried order (a lost reply, a double tap) as the same order, and refuses an order if the price has moved since the customer last saw it, showing the new total instead of charging it;
 - never makes a price quote wait for, or hold up, a real order, and gives up on a locked product after 5 seconds instead of hanging;
 - gives the coupon use back when an order is cancelled, and takes stock and coupon in a fixed order so cancelling can't deadlock with a new order.
@@ -59,9 +57,17 @@ Tests for each of these try to cheat and fail (`npm run test:db`, `npm run test:
 - Turn on two-step sign-in for your Supabase, Vercel, GitHub and Resend accounts.
 - Supabase's free plan has no backups. Use a paid plan or export the data.
 
-## Optional extra: a bot check on checkout
+## The website no longer takes orders itself
 
-Cash on delivery needs no payment, so a script could try to place junk orders. The limits above (caps, open orders per person, per-visitor and per-email limits) already make that hard. For more, create a free **Cloudflare Turnstile** widget and set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` on Vercel: the order form then needs a pass from Turnstile (usually invisible to real shoppers). If Cloudflare itself can't be reached the order is let through rather than losing a sale.
+Customers buy on WhatsApp, so the website's own order endpoints (`/api/quote`, `/api/orders`) answer "410: orders are taken on WhatsApp" and do nothing, unless `WEB_CHECKOUT=on` is set on Vercel. The WhatsApp button only opens the customer's own WhatsApp with a written message: nothing is sent to the website, so there is nothing to spam. The protections above still apply to orders the owner takes in the control panel, and to the endpoints if they are ever switched back on.
+
+## The control panel has its own address
+
+With `ADMIN_HOST=admin.heritagegiftwala.in` the panel exists only there: the shop's address redirects `/admin` to it, and the panel's address answers 404 to every shop page. A second lock sits in the code: a sign-in, a session, a reset link or an upload is refused on any other address, even if a request got past the routing rules. The sign-in cookie is tied to the panel's address (`__Host-`), so it is never even sent to the shop.
+
+## If website orders are ever switched back on
+
+Cash on delivery needs no payment, so a script could try to place junk orders. The limits above (caps, open orders per person, per-visitor and per-email limits) already make that hard. The server still knows how to check a Cloudflare Turnstile bot check (`NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`), but the order page no longer shows the widget, so **do not set those keys** until a website order form with the widget is built again: with the keys set and no widget, every order would be refused.
 
 ## Known limits (honest list)
 

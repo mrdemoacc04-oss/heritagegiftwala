@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { MagnifyingGlassIcon, XIcon, ArrowUpRightIcon } from "@phosphor-icons/react";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { useUI } from "@/lib/store/ui";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, hasPrice } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 const popular = ["hamper", "plush", "crochet", "lamp", "tumbler", "krishna", "clock", "pendant"];
@@ -125,7 +125,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
                     <span className="block truncate font-bold">{p.title}</span>
                     <span className="block truncate text-sm text-ink-2">{p.subtitle}</span>
                   </span>
-                  <span className="font-display font-extrabold">{formatPrice(p.price)}</span>
+                  {hasPrice(p) && <span className="font-display font-extrabold">{formatPrice(p.price)}</span>}
                   <ArrowUpRightIcon size={18} className={i === active ? "text-ink" : "text-transparent"} />
                 </button>
               </li>

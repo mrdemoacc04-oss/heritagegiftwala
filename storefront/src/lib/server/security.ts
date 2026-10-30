@@ -143,6 +143,14 @@ export function guard(handler: (req: Request) => Promise<Response>) {
   };
 }
 
+/**
+ * Customers order on WhatsApp for now, so the website's own cash-on-delivery order endpoints are switched off.
+ * Setting WEB_CHECKOUT=on turns them back on (the shop's pages would also need a checkout that calls them).
+ */
+export const webCheckoutOn = () => process.env.WEB_CHECKOUT === "on";
+
+export const ordersOnWhatsApp = () => json({ message: "Orders are taken on WhatsApp. Please message the shop to buy." }, 410);
+
 /** Standard gate for public JSON endpoints that change something. */
 export function requirePost(req: Request) {
   if (!sameOrigin(req)) throw new HttpError(403, "That request wasn't allowed.");

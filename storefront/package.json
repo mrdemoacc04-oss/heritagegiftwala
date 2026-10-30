@@ -9,10 +9,12 @@
     "lint": "eslint",
     "db:migrate": "node scripts/db.mts migrate",
     "db:seed": "node scripts/db.mts seed",
+    "db:step": "node scripts/db.mts step",
     "admin:create": "node scripts/create-admin.mts",
     "test:db": "node --test db/tests/db.test.mts",
     "test:api": "node --test --test-concurrency=1 db/tests/api.test.mts",
-    "test:security": "node --test db/tests/security.test.mts"
+    "test:security": "node --test db/tests/security.test.mts",
+    "test:whatsapp": "node --test db/tests/whatsapp.test.mts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

@@ -5,8 +5,8 @@ import { CaretRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { BuyBox } from "@/components/product/BuyBox";
 import { ProductCard } from "@/components/product/ProductCard";
-import { getCategories, getPairings, getProduct, getProducts, getSettings } from "@/lib/catalog";
-import { jsonLdString } from "@/lib/format";
+import { getCategories, getPairings, getProduct, getProducts } from "@/lib/catalog";
+import { hasPrice, jsonLdString } from "@/lib/format";
 import { site } from "@/lib/site";
 
 type Props = { params: Promise<{ handle: string }> };
@@ -18,11 +18,12 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const p = await getProduct((await params).handle);
   if (!p || p.hidden) return {};
+  // WhatsApp, Instagram and Google build their link cards from these, so a product link shows its photo and name.
   return {
     title: p.title,
     description: p.description,
     alternates: { canonical: `/products/${p.handle}` },
-    openGraph: { images: [p.studio ?? p.image] },
+    openGraph: { type: "website", title: p.title, description: p.subtitle || p.description, url: `/products/${p.handle}`, images: [p.studio || p.image || "/brand/og.jpg"] },
   };
 }
 
@@ -39,7 +40,7 @@ export default async function ProductPage({ params }: Props) {
   const { handle } = await params;
   const product = await getProduct(handle);
   if (!product || product.hidden) notFound();
-  const [pairings, categories, settings] = await Promise.all([getPairings(product), getCategories(), getSettings()]);
+  const [pairings, categories] = await Promise.all([getPairings(product), getCategories()]);
   const shelf = categories.find((c) => product.categories.includes(c.handle));
 
   const jsonLd = {
@@ -49,13 +50,18 @@ export default async function ProductPage({ params }: Props) {
     description: product.description,
     image: [product.studio, product.image].filter(Boolean).map((src) => (/^https?:\/\//.test(src!) ? src : `${site.url}${src}`)),
     brand: { "@type": "Brand", name: site.name },
-    offers: {
-      "@type": "Offer",
-      price: product.price,
-      priceCurrency: "INR",
-      availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      url: `${site.url}/products/${product.handle}`,
-    },
+    // Only products with a price carry an offer: the rest are quoted on WhatsApp.
+    ...(hasPrice(product)
+      ? {
+          offers: {
+            "@type": "Offer",
+            price: product.price,
+            priceCurrency: "INR",
+            availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            url: `${site.url}/products/${product.handle}`,
+          },
+        }
+      : {}),
   };
 
   return (
@@ -115,11 +121,7 @@ export default async function ProductPage({ params }: Props) {
               )}
               <Accordion title="Delivery">
                 <p>{site.dispatchTime}.</p>
-                {settings.freeShippingFrom > 0 && (
-                  <p className="mt-2">
-                    Free delivery on orders over ₹{settings.freeShippingFrom.toLocaleString("en-IN")}; ₹{settings.shippingFlat} below that.
-                  </p>
-                )}
+                <p className="mt-2">We confirm the delivery charge with you on WhatsApp before anything is sent. You can also pick it up from our shop in {site.address.city}.</p>
               </Accordion>
               <Accordion title="Returns">
                 <p>{site.returnsNote}</p>

@@ -2,6 +2,8 @@
  * Talks to a running copy of the site the way a customer, an attacker and the owner would.
  *   BASE_URL=http://localhost:3457 DATABASE_URL=postgres://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run test:api
  * Use a scratch database: it creates products, orders, customers and coupons.
+ * Start the site with WEB_CHECKOUT=on for this suite: the website's own order endpoints are switched off by default
+ * (customers order on WhatsApp), and whatsapp.test.mts covers that default.
  */
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
@@ -139,15 +141,14 @@ describe("quote and order", () => {
     assert.ok((await q("select count(*)::int as n from shop.orders"))[0].n > 0, "the orders table must still exist");
   });
 
-  test("gift wrap details are checked against the real options", async () => {
-    const wrapId = (await q("insert into shop.products (handle, title, price, track_stock, stock, hidden) values ($1, 'API gift wrap', 49, false, 0, true) returning id", [`api-wrap-${run}`]))[0].id;
-    const bad = [{ product_id: wrapId, quantity: 1, wrap: { paper: "x".repeat(500), ribbon: "red", note: "hi" } }];
-    assert.equal((await call("/api/quote", { body: { items: bad, shipping: "standard" } })).status, 400);
-    const ok = [{ product_id: wrapId, quantity: 1, wrap: { paper: "polka-lagoon", ribbon: "red", note: "Happy birthday!\u0000\u0007" } }];
-    const r = await call("/api/orders", { body: { items: ok, shipping: "standard", contact: person(`wrap-${run}`) } });
-    assert.equal(r.status, 201);
-    const w = (await q("select wrap from shop.order_items i join shop.orders o on o.id=i.order_id where o.number=$1", [r.json.order.number]))[0].wrap;
-    assert.equal(w.note, "Happy birthday!", "control characters are stripped");
+  test("a product with no price can't be ordered through the website", async () => {
+    const free = (await q("insert into shop.products (handle, title, price, stock) values ($1, 'API unpriced', null, 20) returning id", [`api-unpriced-${run}`]))[0].id;
+    const quote = await call("/api/quote", { body: { items: items(1, free), shipping: "standard" } });
+    assert.equal(quote.status, 409);
+    assert.equal(quote.json.code, "NOT_PRICED");
+    const order = await call("/api/orders", { body: { items: items(1, free), shipping: "standard", contact: person(`unpriced-${run}`) } });
+    assert.equal(order.status, 409);
+    assert.equal((await q("select stock from shop.products where id=$1", [free]))[0].stock, 20, "a refused order must not touch stock");
   });
 
   test("the same visitor can't flood the shop with orders", async () => {
@@ -173,7 +174,7 @@ describe("quote and order", () => {
   });
 });
 
-describe("coupon and wrap tricks through the real API", () => {
+describe("coupon tricks through the real API", () => {
   test("a one-use coupon can't be used twice by the same person, even with dots or +tags in their email", async () => {
     const code = `ONCE${run.toUpperCase()}`;
     await q("insert into shop.coupons (code, kind, value, once_per_email) values ($1, 'fixed', 100, true)", [code]);
@@ -202,13 +203,6 @@ describe("coupon and wrap tricks through the real API", () => {
     assert.equal(refused.status, 409);
     assert.equal((await q("select stock from shop.products where id=$1", [productId]))[0].stock, stock);
     assert.equal((await q("select used from shop.coupons where code=$1", [code]))[0].used, used);
-  });
-
-  test("gift-wrap details on an ordinary product are dropped, so nobody gets free gift wrap", async () => {
-    const r = await call("/api/orders", { body: { items: [{ product_id: productId, quantity: 1, wrap: { paper: "polka-lagoon", ribbon: "red", note: "wrap it free" } }], shipping: "standard", contact: person(`freewrap-${run}`) } });
-    assert.equal(r.status, 201);
-    const row = (await q("select i.wrap from shop.order_items i join shop.orders o on o.id=i.order_id where o.number=$1", [r.json.order.number]))[0];
-    assert.equal(row.wrap, null);
   });
 
   test("the delivery fee can't be dodged: free delivery is judged after the coupon", async () => {

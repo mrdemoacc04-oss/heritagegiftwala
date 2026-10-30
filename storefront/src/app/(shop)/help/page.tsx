@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 import { InstagramLogoIcon, WhatsappLogoIcon, EnvelopeSimpleIcon, PhoneIcon } from "@phosphor-icons/react/ssr";
 import { ShopMap } from "@/components/brand/ShopMap";
-import { getSettings } from "@/lib/catalog";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Help", description: "Delivery, returns and how to reach Heritage Gift Wala.", alternates: { canonical: "/help" } };
 
-export default async function HelpPage() {
-  const settings = await getSettings();
+export default function HelpPage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 pt-6 pb-10 sm:px-6">
       <p className="font-hand text-3xl text-ribbon">here to help</p>
@@ -16,11 +14,9 @@ export default async function HelpPage() {
       <section id="delivery" className="mt-12 scroll-mt-28 rounded-[2rem] bg-white p-7">
         <h2 className="text-3xl font-extrabold">Delivery</h2>
         <p className="mt-3 text-lg text-ink-2">{site.dispatchTime}. Standard delivery usually takes 3–6 working days across India.</p>
-        {settings.freeShippingFrom > 0 && (
-          <p className="mt-2 text-lg text-ink-2">
-            Delivery is free on orders over ₹{settings.freeShippingFrom.toLocaleString("en-IN")}, and ₹{settings.shippingFlat} below that. Express delivery is ₹{settings.shippingExpress}.
-          </p>
-        )}
+        <p className="mt-2 text-lg text-ink-2">
+          We confirm the price and the delivery charge with you on WhatsApp before anything is sent. You can also pick your order up from our shop in {site.address.city}.
+        </p>
       </section>
 
       <section id="returns" className="mt-6 scroll-mt-28 rounded-[2rem] bg-white p-7">
@@ -30,14 +26,14 @@ export default async function HelpPage() {
 
       <section id="contact" className="mt-6 scroll-mt-28 rounded-[2rem] bg-lagoon p-7">
         <h2 className="text-3xl font-extrabold">Say hello</h2>
-        <p className="mt-3 text-lg">Questions about a gift, a custom hamper or an order? Reach us here.</p>
+        <p className="mt-3 text-lg">Questions about a gift, a custom hamper or an order? WhatsApp is the quickest way to reach us.</p>
         <div className="mt-5 flex flex-wrap gap-3">
           <a href={`https://instagram.com/${site.instagram}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-full bg-ink px-5 py-3 font-bold text-white hover:bg-ribbon">
             <InstagramLogoIcon size={20} /> @{site.instagram}
           </a>
           {site.whatsapp && (
             <a href={`https://wa.me/${site.whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-full bg-ink px-5 py-3 font-bold text-white hover:bg-[#25d366]">
-              <WhatsappLogoIcon size={20} /> WhatsApp us
+              <WhatsappLogoIcon size={20} /> Chat on WhatsApp
             </a>
           )}
           {site.email && (

@@ -17,8 +17,8 @@ export type Product = {
   title: string;
   subtitle: string;
   description: string;
-  /** Price in rupees (whole rupees). */
-  price: number;
+  /** Price in whole rupees. null = no price shown: customers ask for it on WhatsApp. */
+  price: number | null;
   compareAtPrice?: number;
   categories: string[];
   recipients: Recipient[];
@@ -41,12 +41,6 @@ export type Product = {
   hidden?: boolean;
 };
 
-export type WrapChoice = {
-  paper: string;
-  ribbon: string;
-  note: string;
-};
-
 export type CartLine = {
   /** Local key for this line in the bag. */
   id: string;
@@ -55,9 +49,11 @@ export type CartLine = {
   title: string;
   image: string;
   tint: string;
-  price: number;
+  /** null when the product has no price (the shop quotes it on WhatsApp). */
+  price: number | null;
   quantity: number;
-  wrap?: WrapChoice;
+  /** How many page loads in a row did not find this product in the shop. A product is dropped only after a few, because one page can carry a slightly old copy of the catalog. */
+  missed?: number;
 };
 
 /** Delivery fees the owner can change from the admin panel. */

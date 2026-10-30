@@ -11,7 +11,7 @@ import { cartCount, useCart } from "@/lib/store/cart";
 import { useWishlist } from "@/lib/store/wishlist";
 import { useAuth } from "@/lib/store/auth";
 import { bagTarget, useUI } from "@/lib/store/ui";
-import { cx, formatPrice } from "@/lib/format";
+import { cx, formatPrice, hasPrice } from "@/lib/format";
 
 const links = [
   { href: "/collections/gift-hampers", label: "Hampers" },
@@ -212,7 +212,7 @@ function MegaMenu({ onClose }: { onClose: () => void }) {
             <span className="dots absolute inset-0 opacity-60 [--dot-gap:16px]" />
             <span className="relative block font-hand text-2xl text-ribbon">Our most-gifted hamper</span>
             <span className="relative mt-1 block max-w-[12ch] font-display text-2xl leading-tight font-extrabold">{hamper.title}</span>
-            <span className="relative mt-2 inline-block rounded-full bg-ink px-3 py-1 text-sm font-bold text-white">{formatPrice(hamper.price)}</span>
+            <span className="relative mt-2 inline-block rounded-full bg-ink px-3 py-1 text-sm font-bold text-white">{hasPrice(hamper) ? formatPrice(hamper.price) : "Order on WhatsApp"}</span>
             <Image
               src={hamper.image}
               alt=""

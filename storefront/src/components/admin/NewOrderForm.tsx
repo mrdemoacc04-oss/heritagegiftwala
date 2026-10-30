@@ -5,7 +5,7 @@ import { ActionForm, SubmitButton } from "./forms";
 import { Card, Field, buttonClass, inputClass, rupees } from "./ui";
 import { createOrderAction } from "@/app/(admin)/admin/_actions/orders";
 
-type P = { id: string; title: string; price: number; stock: number; track_stock: boolean };
+type P = { id: string; title: string; price: number | null; stock: number; track_stock: boolean };
 
 export function NewOrderForm({ products }: { products: P[] }) {
   const [rows, setRows] = useState([{ key: 0, id: "", qty: 1 }]);
@@ -30,8 +30,8 @@ export function NewOrderForm({ products }: { products: P[] }) {
                   >
                     <option value="">Choose a product…</option>
                     {products.map((o) => (
-                      <option key={o.id} value={o.id} disabled={o.track_stock && o.stock === 0}>
-                        {o.title} · {rupees(o.price)}{o.track_stock ? ` · ${o.stock === 0 ? "sold out" : `${o.stock} in stock`}` : ""}
+                      <option key={o.id} value={o.id} disabled={o.price === null || (o.track_stock && o.stock === 0)}>
+                        {o.title} · {o.price === null ? "no price yet: set one under Products" : rupees(o.price)}{o.track_stock ? ` · ${o.stock === 0 ? "sold out" : `${o.stock} in stock`}` : ""}
                       </option>
                     ))}
                   </select>
@@ -45,7 +45,7 @@ export function NewOrderForm({ products }: { products: P[] }) {
                     className={`${inputClass} w-20`}
                     aria-label="Quantity"
                   />
-                  <span className="w-20 text-right text-sm font-semibold">{p ? rupees(p.price * r.qty) : ""}</span>
+                  <span className="w-20 text-right text-sm font-semibold">{p && p.price !== null ? rupees(p.price * r.qty) : ""}</span>
                   {rows.length > 1 && (
                     <button type="button" onClick={() => setRows(rows.filter((x) => x.key !== r.key))} className={buttonClass("ghost", "sm")} aria-label="Remove this line">✕</button>
                   )}

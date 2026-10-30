@@ -24,7 +24,7 @@ import {
 } from "@phosphor-icons/react";
 import { ProductCard } from "@/components/product/ProductCard";
 import { useCatalog } from "@/components/providers/CatalogProvider";
-import { cx } from "@/lib/format";
+import { cx, hasPrice } from "@/lib/format";
 import type { Occasion, Product, Recipient } from "@/lib/types";
 
 type Option<T> = { id: T; label: string; icon: Icon; tint: string };
@@ -60,7 +60,8 @@ function rank(products: Product[], who?: Recipient, why?: Occasion, budget?: (ty
       let s = 0;
       if (who && p.recipients.includes(who)) s += 4;
       if (why && p.occasions.includes(why)) s += 3;
-      if (budget) s += p.price >= budget.min && p.price <= budget.max ? 4 : p.price <= budget.max * 1.15 && p.price >= budget.min * 0.85 ? 1 : -6;
+      // Products without a price are neither rewarded nor penalised for a budget.
+      if (budget && hasPrice(p)) s += p.price >= budget.min && p.price <= budget.max ? 4 : p.price <= budget.max * 1.15 && p.price >= budget.min * 0.85 ? 1 : -6;
       return { p, s };
     })
     .sort((a, b) => b.s - a.s || a.p.rank - b.p.rank);
@@ -73,10 +74,14 @@ export function GiftFinder({ variant = "section" }: { variant?: "section" | "pag
   const [why, setWhy] = useState<Occasion>();
   const [budget, setBudget] = useState<(typeof budgets)[number]>();
 
+  // The budget question only makes sense once some products carry a price.
+  const askBudget = products.some(hasPrice);
+  const stepList = askBudget ? steps : steps.slice(0, 2);
+
   const results = useMemo(() => rank(products, who, why, budget), [products, who, why, budget]);
   const best = results[0]?.s ?? 1;
   const picks = results.slice(0, variant === "page" ? 8 : 4);
-  const done = step === 3;
+  const done = step === stepList.length;
 
   const choose = (fn: () => void) => {
     fn();
@@ -99,10 +104,10 @@ export function GiftFinder({ variant = "section" }: { variant?: "section" | "pag
         <div>
           <p className="font-hand text-3xl text-ribbon">stuck on what to gift?</p>
           <h2 className="mt-1 text-[clamp(2.3rem,4.6vw,4rem)] leading-[0.95] font-extrabold">The 30-second Gift Finder</h2>
-          <p className="mt-4 max-w-md text-lg text-ink/75">Three tiny questions and we&apos;ll pull the best picks off the shelf for you.</p>
+          <p className="mt-4 max-w-md text-lg text-ink/75">{askBudget ? "Three" : "Two"} tiny questions and we&apos;ll pull the best picks off the shelf for you.</p>
 
           <ol className="mt-8 flex flex-col gap-3">
-            {steps.map((label, i) => {
+            {stepList.map((label, i) => {
               const answer = [recipients.find((r) => r.id === who)?.label, occasions.find((o) => o.id === why)?.label, budget?.label][i];
               return (
                 <li key={label}>

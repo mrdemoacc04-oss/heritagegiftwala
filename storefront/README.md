@@ -2,8 +2,8 @@
 
 One Next.js 16 app (App Router, Tailwind v4) on **Vercel**, with **Supabase** (Postgres + Storage) behind it. It holds:
 
-- **The shop** customers use: browse, bag, gift wrap, hamper builder, checkout (cash on delivery), accounts, order tracking.
-- **The owner's control panel** at `/admin`: products, prices, stock, photos, shelves, coupons, delivery fees, orders and courier tracking.
+- **The shop** customers use: browse, bag, hamper builder, accounts, order tracking. **Buying is on WhatsApp**: the customer fills in their details and the site opens WhatsApp with the whole order written out. No payment is taken on the website.
+- **The owner's control panel** at `admin.heritagegiftwala.in` (see `ADMIN_HOST` below): products, optional prices, stock, photos, shelves, coupons, delivery fees, orders and courier tracking.
 
 There is no separate backend: the pages and the admin talk to Supabase's Postgres directly from the server.
 
@@ -25,7 +25,9 @@ Follow [../docs/DEPLOY.md](../docs/DEPLOY.md). The owner's day-to-day guide is [
 | `APP_SECRET` | 32+ random characters; hashes visitor IPs for rate limiting |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For product photo uploads. **Server-only secret.** |
 | `NEXT_PUBLIC_SITE_URL` | The shop's public address |
-| `RESEND_API_KEY`, `ORDER_ALERT_EMAIL` | Optional: email the owner when an order arrives |
+| `ADMIN_HOST` | The control panel's own address, e.g. `admin.heritagegiftwala.in` (no `https://`). Once set, `/admin` exists only there; the shop address redirects to it. Needs a redeploy. Unset = the panel is at `/admin` on the shop's address (local work) |
+| `WEB_CHECKOUT` | Leave unset. `on` re-enables the website's own cash-on-delivery order endpoints (`/api/quote`, `/api/orders`); the shop pages no longer call them |
+| `RESEND_API_KEY`, `MAIL_FROM` | Optional: password-reset links and security alerts for the owner. (`ORDER_ALERT_EMAIL` only matters for website orders, which are off.) |
 
 ## How it is put together
 

@@ -13,7 +13,7 @@ type Order = {
   courier: string; tracking_number: string; tracking_url: string; admin_note: string; placed_at: string; packed_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null;
   customer_id: string | null;
 };
-type Item = { title: string; quantity: number; unit_price: number; image: string; tint: string; wrap: { paper?: string; ribbon?: string; note?: string } | null };
+type Item = { title: string; quantity: number; unit_price: number; image: string; tint: string };
 
 const NEXT: Record<string, { to: string; label: string } | undefined> = {
   placed: { to: "packed", label: "Mark as packed" },
@@ -27,7 +27,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   if (!z.uuid().safeParse(id).success) notFound();
   const [order] = await sql<Order>("select * from shop.orders where id = $1", [id]);
   if (!order) notFound();
-  const items = await sql<Item>("select title, quantity, unit_price, image, tint, wrap from shop.order_items where order_id = $1 order by title", [id]);
+  const items = await sql<Item>("select title, quantity, unit_price, image, tint from shop.order_items where order_id = $1 order by title", [id]);
   const created = (await searchParams).created;
   const next = NEXT[order.status];
   const open = order.status !== "cancelled" && order.status !== "delivered";
@@ -54,11 +54,6 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="font-semibold">{it.title}</span> <span className="text-stone-500">× {it.quantity}</span>
-                    {it.wrap && (
-                      <span className="block text-xs text-stone-600">
-                        Gift wrap: {it.wrap.paper}, {it.wrap.ribbon} ribbon{it.wrap.note ? ` · note: “${it.wrap.note}”` : ""}
-                      </span>
-                    )}
                   </span>
                   <span className="font-semibold">{rupees(it.unit_price * it.quantity)}</span>
                 </li>
@@ -68,7 +63,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               <div className="flex justify-between"><dt className="text-stone-600">Subtotal</dt><dd>{rupees(order.subtotal)}</dd></div>
               {order.discount > 0 && <div className="flex justify-between"><dt className="text-stone-600">Coupon {order.coupon_code}</dt><dd>−{rupees(order.discount)}</dd></div>}
               <div className="flex justify-between"><dt className="text-stone-600">{order.shipping_method === "express" ? "Express delivery" : "Standard delivery"}</dt><dd>{order.shipping_fee ? rupees(order.shipping_fee) : "Free"}</dd></div>
-              <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-bold"><dt>Total (cash on delivery)</dt><dd>{rupees(order.total)}</dd></div>
+              <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-bold"><dt>Total</dt><dd>{rupees(order.total)}</dd></div>
             </dl>
           </Card>
 

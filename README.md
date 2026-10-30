@@ -1,6 +1,6 @@
 # Heritage Gift Wala
 
-Online store for [Heritage Gift Wala](https://heritagegiftwala.in), a gift shop on University Road, Patan.
+Online store for [Heritage Gift Wala](https://heritagegiftwala.in), a gift shop at Shlok Plaza, Rajmahel Road, Patan.
 
 | Folder | What it is |
 | --- | --- |

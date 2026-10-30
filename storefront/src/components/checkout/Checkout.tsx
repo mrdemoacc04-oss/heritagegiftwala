@@ -1,18 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
-import { ArrowLeftIcon, InfoIcon, LockSimpleIcon, MoneyIcon, SpinnerGapIcon, TruckIcon, LightningIcon, UserCircleIcon, MapPinIcon, TagIcon, CreditCardIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, InfoIcon, MapPinIcon, MinusIcon, PlusIcon, TrashIcon, UserCircleIcon, WhatsappLogoIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
-import { Turnstile, turnstileSiteKey } from "@/components/checkout/Turnstile";
-import { useCatalog } from "@/components/providers/CatalogProvider";
 import { cartSubtotal, useCart } from "@/lib/store/cart";
 import { useAuth, type Address } from "@/lib/store/auth";
-import { cx, formatPrice } from "@/lib/format";
-import { paperById } from "@/lib/wrap";
+import { cx, formatPrice, hasPrice } from "@/lib/format";
+import { site } from "@/lib/site";
+import { orderMessage, whatsappLink } from "@/lib/whatsapp";
 
 const STATES = [
   "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chandigarh", "Chhattisgarh",
@@ -22,31 +19,16 @@ const STATES = [
   "Uttar Pradesh", "Uttarakhand", "West Bengal",
 ];
 
-type Ship = "standard" | "express";
-type Form = Record<"email" | "phone" | "name" | "address1" | "address2" | "city" | "state" | "pincode", string>;
-const empty: Form = { email: "", phone: "", name: "", address1: "", address2: "", city: "", state: "Gujarat", pincode: "" };
-
-/** The shop's own prices for this bag, as worked out by the server. */
-type Quote = {
-  lines: { product_id: string; title: string; unit_price: number; quantity: number }[];
-  subtotal: number;
-  shipping_fee: number;
-  discount: number;
-  total: number;
-  coupon: string | null;
-};
-
-/** Preview orders get a short local reference, since no backend assigns one. */
-const previewOrderNo = () => `HGW-${Date.now().toString(36).slice(-6).toUpperCase()}`;
+type Form = Record<"phone" | "name" | "address1" | "address2" | "city" | "state" | "pincode" | "note", string>;
+const empty: Form = { phone: "", name: "", address1: "", address2: "", city: "Patan", state: "Gujarat", pincode: "", note: "" };
 
 function validate(f: Form) {
   const e: Partial<Record<keyof Form, string>> = {};
-  if (!/^\S+@\S+\.\S+$/.test(f.email)) e.email = "Please enter a valid email";
+  if (!f.name.trim()) e.name = "Who is this order for?";
   if (!/^[6-9]\d{9}$/.test(f.phone.replace(/\D/g, "").slice(-10))) e.phone = "10-digit mobile number";
-  if (!f.name.trim()) e.name = "Who should we deliver to?";
   if (!f.address1.trim()) e.address1 = "House, building and street";
   if (!f.city.trim()) e.city = "City";
-  if (!/^\d{6}$/.test(f.pincode)) e.pincode = "6-digit PIN code";
+  if (!/^\d{6}$/.test(f.pincode.trim())) e.pincode = "6-digit PIN code";
   return e;
 }
 
@@ -63,43 +45,16 @@ function fromAddress(a: Address): Partial<Form> {
   };
 }
 
-async function post<T>(url: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string; code?: string; productId?: string; newTotal?: number }> {
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) return { ok: true, data: data as T };
-    return { ok: false, status: res.status, message: data.message ?? "Something went wrong. Please try again.", code: data.code, productId: data.product_id, newTotal: data.new_total };
-  } catch {
-    return { ok: false, status: 0, message: "We couldn't reach the shop. Please check your connection and try again." };
-  }
-}
-
+/** The bag's details page. It ends on WhatsApp: the shop confirms the price, the delivery and the payment in the chat. */
 export function Checkout() {
   const lines = useCart((s) => s.lines);
   const clear = useCart((s) => s.clear);
   const remove = useCart((s) => s.remove);
-  const reprice = useCart((s) => s.reprice);
-  const router = useRouter();
-  const { live, settings } = useCatalog();
+  const setQuantity = useCart((s) => s.setQuantity);
   const [form, setForm] = useState<Form>(empty);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
-  const [ship, setShip] = useState<Ship>("standard");
-  const [pay, setPay] = useState(live ? "cod" : "online");
-  const [placing, setPlacing] = useState(false);
-  const [failure, setFailure] = useState<string>();
-  // Said by the shop when the order itself was refused. It stays until the customer changes something, so the next price check can't wipe it.
-  const [refused, setRefused] = useState<{ message: string; coupon?: boolean }>();
-  const [quote, setQuote] = useState<Quote>();
-  const [quoting, setQuoting] = useState(false);
-  const [couponInput, setCouponInput] = useState("");
-  const [coupon, setCoupon] = useState<string | null>(null);
-  const [couponError, setCouponError] = useState<string>();
-  // One random id for this checkout: pressing the button twice, or retrying after a lost reply, can never make two orders.
-  const [idemKey] = useState(() => crypto.randomUUID());
-  const [quoteTick, setQuoteTick] = useState(0);
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [captchaReset, setCaptchaReset] = useState(0);
-  const onCaptcha = useCallback((t: string) => setCaptchaToken(t), []);
+  // The link that was opened, kept so it can be offered again if the browser blocked the new tab.
+  const [sentLink, setSentLink] = useState<string>();
   const subtotal = cartSubtotal(lines);
   const customer = useAuth((s) => s.customer);
   const authReady = useAuth((s) => s.ready);
@@ -112,74 +67,18 @@ export function Checkout() {
     const home = addresses.find((a) => a.is_default_shipping) ?? addresses[0];
     setForm((f) => ({
       ...f,
-      email: f.email || customer.email,
       phone: f.phone || customer.phone || "",
       name: f.name || [customer.first_name, customer.last_name].filter(Boolean).join(" "),
       ...(home && !f.address1 ? fromAddress(home) : {}),
     }));
   }
 
-  const items = useMemo(() => lines.map((l) => ({ product_id: l.productId, quantity: l.quantity, wrap: l.wrap ?? null })), [lines]);
-  const itemsKey = JSON.stringify(items);
-
-  // Live shops re-price the bag on the server whenever it, the delivery speed or the coupon changes.
-  const request = useRef(0);
-  useEffect(() => {
-    if (!live || !items.length) return;
-    const mine = ++request.current;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuoting(true);
-    (async () => {
-      const res = await post<Quote>("/api/quote", { items, shipping: ship, coupon });
-      if (mine !== request.current) return;
-      setQuoting(false);
-      if (res.ok) {
-        setQuote(res.data);
-        setFailure(undefined);
-        setCouponError(undefined);
-        reprice(Object.fromEntries(res.data.lines.map((l) => [l.product_id, { unit_price: l.unit_price, title: l.title }])));
-        return;
-      }
-      setQuote(undefined);
-      if (res.code === "BAD_COUPON") {
-        setCoupon(null);
-        setCouponError(res.message);
-      } else if (res.code === "UNKNOWN_PRODUCT" && res.productId) {
-        for (const l of useCart.getState().lines.filter((x) => x.productId === res.productId)) void remove(l.id);
-        setFailure("An item in your bag isn't available any more, so we took it out.");
-      } else {
-        setFailure(res.status === 400 ? "Some items in your bag are out of date. Please empty the bag and add them again." : res.message);
-      }
-    })();
-    // The bag's contents are compared through itemsKey, so a re-render with the same lines does not re-price.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, itemsKey, ship, coupon, quoteTick]);
-
-  const standardFee = settings.freeShippingFrom > 0 && subtotal >= settings.freeShippingFrom ? 0 : settings.shippingFlat;
-  const shippingOptions = [
-    { id: "standard" as const, label: "Standard delivery", detail: "3–6 working days", amount: quote && ship === "standard" ? quote.shipping_fee : standardFee },
-    { id: "express" as const, label: "Express delivery", detail: "1–3 working days", amount: settings.shippingExpress },
-  ];
-  const delivery = quote ? quote.shipping_fee : (shippingOptions.find((o) => o.id === ship)?.amount ?? 0);
-  const discount = quote?.discount ?? 0;
-  const shownSubtotal = quote?.subtotal ?? subtotal;
-  const total = quote ? quote.total : subtotal + delivery;
-
-  const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
     if (errors[k]) setErrors((er) => ({ ...er, [k]: undefined }));
   };
 
-  const applyCoupon = () => {
-    const code = couponInput.trim().toUpperCase();
-    setCouponError(undefined);
-    setRefused(undefined);
-    if (!code) return;
-    if (!/^[A-Z0-9_-]{3,24}$/.test(code)) return setCouponError("That doesn't look like a coupon code.");
-    setCoupon(code);
-  };
-
-  const place = async (e: React.FormEvent) => {
+  const send = (e: React.FormEvent) => {
     e.preventDefault();
     const found = validate(form);
     setErrors(found);
@@ -187,47 +86,26 @@ export function Checkout() {
       document.querySelector<HTMLElement>(`[name="${Object.keys(found)[0]}"]`)?.focus();
       return;
     }
-    setPlacing(true);
-    setFailure(undefined);
-    setRefused(undefined);
-
-    let orderNo: string;
-    let finalTotal = total;
-    if (live) {
-      const res = await post<{ order: { number: number; total: number } }>("/api/orders", {
-        items,
-        shipping: ship,
-        coupon,
-        idem_key: idemKey,
-        // The total the customer is looking at: if the price has moved since, the shop says so instead of charging more.
-        expected_total: quote ? total : undefined,
-        captcha: captchaToken || undefined,
-        contact: { email: form.email, phone: form.phone, name: form.name, address1: form.address1, address2: form.address2, city: form.city, state: form.state, pincode: form.pincode },
-      });
-      if (!res.ok) {
-        // A code that was fine in the preview can still be refused at the last moment (for example, already used by this customer).
-        if (res.code === "BAD_COUPON") setCoupon(null);
-        setRefused({ message: res.message, coupon: res.code === "BAD_COUPON" });
-        setPlacing(false);
-        if (turnstileSiteKey) setCaptchaReset((n) => n + 1);
-        // The price moved while they were on this page: show them the new total before anything is charged.
-        if (res.code === "PRICE_CHANGED") setQuoteTick((n) => n + 1);
-        return;
-      }
-      orderNo = `#${res.data.order.number}`;
-      finalTotal = res.data.order.total;
-    } else {
-      orderNo = previewOrderNo();
-    }
-    const summary = { lines, subtotal: shownSubtotal, delivery, total: finalTotal, name: form.name, city: form.city, email: form.email.trim() };
-    sessionStorage.setItem("hgw-last-order", JSON.stringify({ ...summary, orderNo, preview: !live }));
-    clear();
-    router.push("/order/confirmed");
+    const text = orderMessage(
+      lines.map((l) => ({ handle: l.handle, title: l.title, quantity: l.quantity, price: l.price })),
+      {
+        name: form.name.trim(),
+        phone: form.phone.replace(/\D/g, "").slice(-10),
+        address1: form.address1.trim(),
+        address2: form.address2.trim(),
+        city: form.city.trim(),
+        state: form.state,
+        pincode: form.pincode.trim(),
+        note: form.note.trim(),
+      },
+    );
+    const link = whatsappLink(text);
+    setSentLink(link);
+    // Opened from the tap itself, so the browser lets it through; the link under the button is the fallback.
+    window.open(link, "_blank", "noopener");
   };
 
-  const wrapCount = useMemo(() => lines.filter((l) => l.handle === "gift-wrap").reduce((n, l) => n + l.quantity, 0), [lines]);
-
-  if (!lines.length && !placing) {
+  if (!lines.length) {
     return (
       <div className="flex flex-col items-center px-4 py-24 text-center">
         <Panda className="w-36" />
@@ -241,21 +119,18 @@ export function Checkout() {
   }
 
   return (
-    <form onSubmit={place} noValidate className="mx-auto grid max-w-[1200px] gap-10 px-4 pt-6 pb-24 sm:px-6 lg:grid-cols-[1.25fr_1fr]">
+    <form onSubmit={send} noValidate className="mx-auto grid max-w-[1200px] gap-10 px-4 pt-6 pb-24 sm:px-6 lg:grid-cols-[1.25fr_1fr]">
       <div>
         <Link href="/shop" className="inline-flex items-center gap-1.5 text-sm font-bold text-ink-2 hover:text-ink">
           <ArrowLeftIcon size={14} weight="bold" /> Keep shopping
         </Link>
-        <h1 className="mt-3 text-5xl font-extrabold">Checkout</h1>
+        <h1 className="mt-3 text-5xl font-extrabold">Order on WhatsApp</h1>
+        <p className="mt-3 flex items-start gap-2.5 rounded-2xl bg-lagoon-100 p-4 text-sm font-semibold">
+          <InfoIcon size={20} weight="fill" className="mt-0.5 shrink-0 text-lagoon-800" />
+          Tell us where to send it. When you press the green button, WhatsApp opens with your whole order already written. Just press Send, and we&apos;ll confirm the price, the delivery and how to pay in the chat.
+        </p>
 
-        {!live && (
-          <p className="mt-5 flex items-start gap-2.5 rounded-2xl bg-sun-100 p-4 text-sm font-semibold">
-            <InfoIcon size={20} weight="fill" className="mt-0.5 shrink-0 text-[#b07d00]" />
-            Store preview: you can try the whole checkout, but orders placed here aren&apos;t sent to the shop yet.
-          </p>
-        )}
-
-        {live && authReady && !customer && (
+        {authReady && !customer && (
           <Link
             href="/account/login?next=/checkout"
             className="group mt-5 flex items-center gap-3 rounded-2xl border-2 border-dashed border-ink/30 bg-white p-4 transition hover:border-ink"
@@ -263,7 +138,7 @@ export function Checkout() {
             <UserCircleIcon size={28} weight="duotone" className="shrink-0 text-lagoon-600" />
             <span className="flex-1 text-sm">
               <span className="block font-bold">Have an account? Sign in</span>
-              <span className="text-ink-2">to fill in your details and keep track of this order. Or just carry on as a guest.</span>
+              <span className="text-ink-2">to fill in your details from your saved address. Or just carry on as a guest.</span>
             </span>
             <span className="font-bold underline underline-offset-4 group-hover:text-ribbon">Sign in</span>
           </Link>
@@ -271,14 +146,14 @@ export function Checkout() {
         {customer && (
           <p className="mt-5 flex items-center gap-2.5 rounded-2xl bg-lagoon-100 p-4 text-sm font-semibold">
             <UserCircleIcon size={22} weight="fill" className="shrink-0 text-lagoon-800" />
-            Signed in as {customer.email}. This order will appear in your account.
+            Signed in as {customer.email}.
           </p>
         )}
 
-        <Step n={1} title="Contact">
+        <Step n={1} title="About you">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Email" name="email" type="email" autoComplete="email" value={form.email} onChange={set("email")} error={errors.email} />
-            <Field label="Mobile number" name="phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={set("phone")} error={errors.phone} />
+            <Field label="Your name" name="name" autoComplete="name" maxLength={120} value={form.name} onChange={set("name")} error={errors.name} />
+            <Field label="Mobile number" name="phone" type="tel" maxLength={20} autoComplete="tel" inputMode="tel" value={form.phone} onChange={set("phone")} error={errors.phone} />
           </div>
         </Step>
 
@@ -302,10 +177,9 @@ export function Checkout() {
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name" name="name" autoComplete="name" value={form.name} onChange={set("name")} error={errors.name} className="sm:col-span-2" />
-            <Field label="House, building, street" name="address1" autoComplete="address-line1" value={form.address1} onChange={set("address1")} error={errors.address1} className="sm:col-span-2" />
-            <Field label="Area, landmark (optional)" name="address2" autoComplete="address-line2" value={form.address2} onChange={set("address2")} className="sm:col-span-2" />
-            <Field label="City" name="city" autoComplete="address-level2" value={form.city} onChange={set("city")} error={errors.city} />
+            <Field label="House, building, street" name="address1" autoComplete="address-line1" maxLength={200} value={form.address1} onChange={set("address1")} error={errors.address1} className="sm:col-span-2" />
+            <Field label="Area, landmark (optional)" name="address2" autoComplete="address-line2" maxLength={200} value={form.address2} onChange={set("address2")} className="sm:col-span-2" />
+            <Field label="City" name="city" autoComplete="address-level2" maxLength={80} value={form.city} onChange={set("city")} error={errors.city} />
             <Field label="PIN code" name="pincode" inputMode="numeric" autoComplete="postal-code" maxLength={6} value={form.pincode} onChange={set("pincode")} error={errors.pincode} />
             <label className="sm:col-span-2">
               <span className="text-sm font-bold">State</span>
@@ -318,25 +192,18 @@ export function Checkout() {
           </div>
         </Step>
 
-        <Step n={3} title="Delivery speed">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {shippingOptions.map((o, i) => (
-              <Radio key={o.id} name="ship" checked={ship === o.id} onChange={() => { setShip(o.id); setRefused(undefined); }} icon={i ? LightningIcon : TruckIcon} label={o.label} detail={o.detail} right={o.amount ? formatPrice(o.amount) : "Free"} />
-            ))}
-          </div>
-        </Step>
-
-        <Step n={4} title="Payment">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {live ? (
-              <Radio name="pay" checked onChange={() => setPay("cod")} icon={MoneyIcon} label="Cash on delivery" detail="Pay when it arrives" />
-            ) : (
-              <>
-                <Radio name="pay" checked={pay === "online"} onChange={() => setPay("online")} icon={CreditCardIcon} label="UPI, cards & netbanking" detail="Pay securely online" />
-                <Radio name="pay" checked={pay === "cod"} onChange={() => setPay("cod")} icon={MoneyIcon} label="Cash on delivery" detail="Pay when it arrives" />
-              </>
-            )}
-          </div>
+        <Step n={3} title="Anything we should know?">
+          <label>
+            <span className="text-sm font-bold">Gift message, pick-up from the shop, a date you need it by… (optional)</span>
+            <textarea
+              name="note"
+              value={form.note}
+              onChange={set("note")}
+              rows={3}
+              maxLength={300}
+              className="mt-1.5 w-full rounded-2xl border-2 border-ink/15 bg-white px-4 py-3 font-semibold outline-none transition focus:border-ink"
+            />
+          </label>
         </Step>
       </div>
 
@@ -346,87 +213,59 @@ export function Checkout() {
           <ul className="mt-5 space-y-3">
             {lines.map((l) => (
               <li key={l.id} className="flex items-center gap-3">
-                <span className="relative grid size-14 shrink-0 place-items-center rounded-xl" style={l.handle === "gift-wrap" && l.wrap ? paperById(l.wrap.paper).style : { background: l.tint }}>
-                  {l.image && l.handle !== "gift-wrap" && <Image src={l.image} alt="" width={56} height={56} className="size-11 object-contain" />}
-                  <span className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-ink text-[11px] font-bold text-white">{l.quantity}</span>
+                <Link href={`/products/${l.handle}`} className="relative grid size-16 shrink-0 place-items-center rounded-xl" style={{ background: l.tint }} aria-label={l.title}>
+                  {l.image && <Image src={l.image} alt="" width={64} height={64} className="size-12 object-contain" />}
+                </Link>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{l.title}</span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <span className="flex items-center rounded-full border-2 border-ink bg-white">
+                      <button type="button" onClick={() => setQuantity(l.id, l.quantity - 1)} aria-label={`One less ${l.title}`} className="grid size-6 place-items-center rounded-full hover:bg-cream">
+                        <MinusIcon size={11} weight="bold" />
+                      </button>
+                      <span className="w-6 text-center text-sm font-bold" aria-live="polite">{l.quantity}</span>
+                      <button type="button" onClick={() => setQuantity(l.id, l.quantity + 1)} aria-label={`One more ${l.title}`} className="grid size-6 place-items-center rounded-full hover:bg-cream">
+                        <PlusIcon size={11} weight="bold" />
+                      </button>
+                    </span>
+                    <button type="button" onClick={() => remove(l.id)} aria-label={`Remove ${l.title}`} className="rounded-full p-1.5 text-ink-3 hover:bg-ribbon-100 hover:text-ribbon">
+                      <TrashIcon size={15} />
+                    </button>
+                  </span>
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{l.title}</span>
-                <span className="text-sm font-bold">{formatPrice(l.price * l.quantity)}</span>
+                {hasPrice(l) && <span className="text-sm font-bold">{formatPrice(l.price * l.quantity)}</span>}
               </li>
             ))}
           </ul>
 
-          {live && (
-            <div className="mt-5">
-              <label className="text-sm font-bold" htmlFor="coupon">Have a coupon?</label>
-              <div className="mt-1.5 flex gap-2">
-                <input
-                  id="coupon"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())}
-                  placeholder="Enter code"
-                  autoCapitalize="characters"
-                  maxLength={24}
-                  className="min-w-0 flex-1 rounded-2xl border-2 border-ink/15 bg-white px-4 py-2.5 font-semibold uppercase outline-none transition focus:border-ink"
-                />
-                <button type="button" onClick={applyCoupon} className="rounded-2xl border-2 border-ink px-4 font-bold hover:bg-sun">Apply</button>
-              </div>
-              {(couponError ?? (refused?.coupon ? refused.message : undefined)) && <p className="mt-1.5 text-sm font-semibold text-ribbon">{couponError ?? refused?.message}</p>}
-              {quote?.coupon && !couponError && !refused?.coupon && (
-                <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-lagoon-800">
-                  <TagIcon size={16} weight="fill" /> {quote.coupon} applied
-                </p>
-              )}
-            </div>
-          )}
-
-          <dl className="mt-6 space-y-2 border-t-2 border-dashed border-line pt-4 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-ink-2">Subtotal</dt>
-              <dd className="font-bold">{formatPrice(shownSubtotal)}</dd>
-            </div>
-            {discount > 0 && (
-              <div className="flex justify-between">
-                <dt className="text-ink-2">Discount</dt>
-                <dd className="font-bold text-lagoon-800">−{formatPrice(discount)}</dd>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <dt className="text-ink-2">Delivery</dt>
-              <dd className="font-bold">{delivery ? formatPrice(delivery) : "Free"}</dd>
-            </div>
-            {wrapCount > 0 && (
-              <div className="flex justify-between">
-                <dt className="text-ink-2">Gift wrapped</dt>
-                <dd className="font-hand text-lg leading-none text-ribbon">{wrapCount} × with love</dd>
-              </div>
-            )}
-          </dl>
-          <div className="mt-4 flex items-baseline justify-between border-t-2 border-ink pt-4">
-            <span className="font-display text-lg font-bold">Total</span>
-            <motion.span key={total} initial={{ scale: 1.15 }} animate={{ scale: 1 }} className="font-display text-3xl font-extrabold">
-              {formatPrice(total)}
-            </motion.span>
+          <div className="mt-6 flex items-baseline justify-between border-t-2 border-ink pt-4">
+            <span className="font-display text-lg font-bold">{subtotal !== null ? "Items" : "Price"}</span>
+            <span className={cx("font-display font-extrabold", subtotal !== null ? "text-3xl" : "text-lg")}>{subtotal !== null ? formatPrice(subtotal) : "Confirmed on WhatsApp"}</span>
           </div>
-          {(refused && !refused.coupon ? refused.message : failure) && (
-            <p className="mt-4 rounded-xl bg-ribbon-100 px-3 py-2 text-sm font-semibold text-ribbon-700">
-              {refused && !refused.coupon ? refused.message : failure}{" "}
-              {failure?.includes("out of date") && (
-                <button type="button" onClick={() => clear()} className="underline underline-offset-2">Empty the bag</button>
-              )}
-            </p>
-          )}
-          {live && <Turnstile onToken={onCaptcha} resetSignal={captchaReset} />}
+          <p className="mt-1 text-xs text-ink-3">Delivery is worked out in the chat.</p>
+
           <button
             type="submit"
-            disabled={placing || (live && (quoting || !quote)) || (live && Boolean(turnstileSiteKey) && !captchaToken)}
-            className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-ribbon text-lg font-bold text-white shadow-[0_6px_0_var(--color-ribbon-700)] transition hover:bg-ribbon-700 active:translate-y-1 active:shadow-none disabled:opacity-60"
+            className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#25d366] text-lg font-bold text-ink shadow-[0_6px_0_#128c4a] transition hover:bg-[#2fe173] active:translate-y-1 active:shadow-[0_2px_0_#128c4a]"
           >
-            {placing || quoting ? <SpinnerGapIcon size={20} weight="bold" className="animate-spin" /> : <LockSimpleIcon size={18} weight="bold" />}
-            {placing ? "Placing your order…" : `Place order · ${formatPrice(total)}`}
+            <WhatsappLogoIcon size={24} weight="fill" /> Send order on WhatsApp
           </button>
-          <p className="mt-3 text-center text-xs text-ink-3">Fix rate pricing. What you see is what you pay.</p>
+
+          {sentLink && (
+            <div role="status" className="mt-4 rounded-2xl bg-lagoon-100 p-4 text-sm">
+              <p className="font-bold">WhatsApp should have opened with your order ready.</p>
+              <p className="mt-1 text-ink-2">Press Send there and we&apos;ll reply as soon as we can. Nothing is ordered until you send it.</p>
+              <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-bold">
+                <a href={sentLink} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-ribbon">
+                  It didn&apos;t open? Open WhatsApp
+                </a>
+                <button type="button" onClick={() => { clear(); setSentLink(undefined); }} className="underline underline-offset-4 hover:text-ribbon">
+                  I&apos;ve sent it, empty my bag
+                </button>
+              </p>
+            </div>
+          )}
+          <p className="mt-3 text-center text-xs text-ink-3">Chatting with {site.phone.display}. No payment is taken on this website.</p>
         </div>
       </aside>
     </form>
@@ -458,37 +297,6 @@ function Field({ label, error, className, ...props }: { label: string; error?: s
         )}
       />
       {error && <span className="mt-1 block text-sm font-semibold text-ribbon">{error}</span>}
-    </label>
-  );
-}
-
-function Radio({
-  name,
-  checked,
-  onChange,
-  icon: I,
-  label,
-  detail,
-  right,
-}: {
-  name: string;
-  checked: boolean;
-  onChange: () => void;
-  icon: React.ComponentType<{ size?: number; weight?: "duotone" }>;
-  label: string;
-  detail?: string;
-  right?: string;
-}) {
-  return (
-    <label className={cx("flex cursor-pointer items-center gap-3 rounded-2xl border-2 bg-white p-4 transition has-focus-visible:ring-4 has-focus-visible:ring-lagoon", checked ? "border-ink shadow-[3px_3px_0_var(--color-ink)]" : "border-ink/15 hover:border-ink/40")}>
-      <input type="radio" name={name} checked={checked} onChange={onChange} className="sr-only" />
-      <span className={cx("grid size-5 shrink-0 place-items-center rounded-full border-2 border-ink", checked && "bg-ink")}>{checked && <span className="size-2 rounded-full bg-white" />}</span>
-      <I size={24} weight="duotone" />
-      <span className="flex-1">
-        <span className="block font-bold">{label}</span>
-        {detail && <span className="block text-sm text-ink-2">{detail}</span>}
-      </span>
-      {right && <span className="font-display font-extrabold">{right}</span>}
     </label>
   );
 }

@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CaretDownIcon, FadersHorizontalIcon, XIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
 import { ProductCard } from "@/components/product/ProductCard";
-import { cx } from "@/lib/format";
+import { cx, hasPrice } from "@/lib/format";
 import type { Category, Product, Recipient } from "@/lib/types";
 
 export type ShopFilters = { shelf?: string; for?: Recipient; max?: number; sort?: SortId };
@@ -39,8 +39,17 @@ export function ShopBrowser({
   /** On a collection page the shelf is fixed. */
   lockShelf?: string;
 }) {
-  const [f, setF] = useState<ShopFilters>({ sort: "featured", ...initial, shelf: lockShelf ?? initial.shelf });
+  // Budget filters and price sorting only make sense once some products carry a price. An old link that asks for them
+  // (a bookmarked "under ₹500") is read as "everything" rather than landing on an empty shelf with no way to see why.
+  const anyPriced = useMemo(() => products.some(hasPrice), [products]);
+  const [f, setF] = useState<ShopFilters>(() => ({
+    sort: "featured",
+    ...initial,
+    ...(anyPriced ? {} : { max: undefined, sort: initial.sort?.startsWith("price") ? "featured" : initial.sort }),
+    shelf: lockShelf ?? initial.shelf,
+  }));
   const [panel, setPanel] = useState(false);
+  const sortOptions = anyPriced ? sorts : sorts.filter((s) => !s.id.startsWith("price"));
 
   // Keep the URL shareable without a server round trip.
   useEffect(() => {
@@ -55,12 +64,13 @@ export function ShopBrowser({
 
   const shown = useMemo(() => {
     const list = products.filter(
-      (p) => (!f.shelf || p.categories.includes(f.shelf)) && (!f.for || p.recipients.includes(f.for)) && (!f.max || p.price <= f.max),
+      (p) => (!f.shelf || p.categories.includes(f.shelf)) && (!f.for || p.recipients.includes(f.for)) && (!f.max || (hasPrice(p) && p.price <= f.max)),
     );
     const by: Record<SortId, (a: Product, b: Product) => number> = {
       featured: (a, b) => a.rank - b.rank,
-      "price-asc": (a, b) => a.price - b.price,
-      "price-desc": (a, b) => b.price - a.price,
+      // Unpriced products always sit after the priced ones.
+      "price-asc": (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || a.rank - b.rank,
+      "price-desc": (a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity) || a.rank - b.rank,
       az: (a, b) => a.title.localeCompare(b.title),
     };
     return list.sort(by[f.sort ?? "featured"]);
@@ -95,13 +105,15 @@ export function ShopBrowser({
           </Chip>
         ))}
       </FilterGroup>
-      <FilterGroup title="Budget">
-        {budgets.map((b) => (
-          <Chip key={b} on={f.max === b} onClick={() => setF({ ...f, max: f.max === b ? undefined : b })}>
-            Under ₹{b.toLocaleString("en-IN")}
-          </Chip>
-        ))}
-      </FilterGroup>
+      {anyPriced && (
+        <FilterGroup title="Budget">
+          {budgets.map((b) => (
+            <Chip key={b} on={f.max === b} onClick={() => setF({ ...f, max: f.max === b ? undefined : b })}>
+              Under ₹{b.toLocaleString("en-IN")}
+            </Chip>
+          ))}
+        </FilterGroup>
+      )}
     </div>
   );
 
@@ -151,7 +163,7 @@ export function ShopBrowser({
               onChange={(e) => setF({ ...f, sort: e.target.value as SortId })}
               className="appearance-none rounded-full border-2 border-ink bg-white py-2 pr-10 pl-4 font-bold outline-none"
             >
-              {sorts.map((s) => (
+              {sortOptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
                 </option>

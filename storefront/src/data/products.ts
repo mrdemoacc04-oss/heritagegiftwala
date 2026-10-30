@@ -409,29 +409,14 @@ const seeds: Seed[] = [
     details: ["100 ml eau de parfum", "Weighted glass bottle", "Leather strap with gold grommets", "Store away from sunlight"],
     rank: 28,
   },
-  {
-    handle: "gift-wrap",
-    title: "Hand Gift Wrap",
-    subtitle: "Paper, ribbon and a handwritten note",
-    description: "We wrap your gift by hand at the shop, tie it with ribbon and write your note on a tag.",
-    price: 49,
-    categories: [],
-    recipients: [],
-    occasions: [],
-    tint: "#FFF3D6",
-    details: [],
-    rank: 999,
-    hidden: true,
-  },
 ];
 
 export const products: Product[] = seeds.map(({ shelfPhoto, ...s }) => ({
   ...s,
   id: `prod_${s.handle}`,
-  // Gift wrap is a service, drawn as a paper swatch wherever it appears.
-  image: s.hidden ? "" : `/products/${s.handle}.png`,
-  studio: s.hidden ? undefined : `/products/studio/${s.handle}.jpg`,
-  shelf: s.hidden ? undefined : `/products/shelf/${shelfPhoto ?? s.handle}.jpg`,
+  image: `/products/${s.handle}.png`,
+  studio: `/products/studio/${s.handle}.jpg`,
+  shelf: `/products/shelf/${shelfPhoto ?? s.handle}.jpg`,
   imageFit: "contain" as const,
   inStock: true,
 }));

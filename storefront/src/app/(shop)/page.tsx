@@ -22,6 +22,8 @@ export default async function Home() {
     description: site.description,
     slogan: site.tagline,
     telephone: site.phone.tel,
+    image: `${site.url}${site.storePhoto.src}`,
+    priceRange: "₹₹",
     address: {
       "@type": "PostalAddress",
       streetAddress: `${site.address.street}, ${site.address.landmark}`,
@@ -30,9 +32,7 @@ export default async function Home() {
       postalCode: site.address.pincode,
       addressCountry: "IN",
     },
-    geo: { "@type": "GeoCoordinates", latitude: site.geo.lat, longitude: site.geo.lng },
     hasMap: site.mapsUrl,
-    priceRange: "₹₹",
     sameAs: [`https://instagram.com/${site.instagram}`],
   };
 

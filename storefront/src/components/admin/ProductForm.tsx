@@ -7,9 +7,9 @@ import { Card, Field, inputClass } from "./ui";
 import type { FormState } from "@/app/(admin)/admin/_actions/auth";
 
 export type ProductValues = {
-  title: string; handle: string; subtitle: string; description: string; price: number; compare_at: number | null;
+  title: string; handle: string; subtitle: string; description: string; price: number | null; compare_at: number | null;
   categories: string[]; recipients: string[]; occasions: string[]; details: string[]; tint: string; badge: string; rank: number;
-  is_new: boolean; status: "active" | "draft"; track_stock: boolean; stock: number; image: string; studio: string; shelf: string; image_fit: "contain" | "cover"; hidden: boolean;
+  is_new: boolean; status: "active" | "draft"; track_stock: boolean; stock: number; image: string; studio: string; shelf: string; image_fit: "contain" | "cover";
 };
 
 const RECIPIENTS: [string, string][] = [["her", "For her"], ["him", "For him"], ["kids", "For kids"], ["parents", "For parents"], ["colleague", "For a colleague"], ["home", "For the home"]];
@@ -17,8 +17,8 @@ const OCCASIONS: [string, string][] = [["birthday", "Birthday"], ["anniversary",
 const TINTS = ["#FFD6DE", "#FFE0EC", "#D3F3EA", "#FFE3CC", "#E6DEFF", "#F4E9D8", "#D6EEFF", "#F7E4D4", "#FFE9B8", "#FFF0A8", "#E1E7F0", "#ECE7E2"];
 
 export const blankProduct: ProductValues = {
-  title: "", handle: "", subtitle: "", description: "", price: 0, compare_at: null, categories: [], recipients: [], occasions: [], details: [], tint: "#F4E9D8",
-  badge: "", rank: 100, is_new: false, status: "active", track_stock: true, stock: 0, image: "", studio: "", shelf: "", image_fit: "cover", hidden: false,
+  title: "", handle: "", subtitle: "", description: "", price: null, compare_at: null, categories: [], recipients: [], occasions: [], details: [], tint: "#F4E9D8",
+  badge: "", rank: 100, is_new: false, status: "active", track_stock: true, stock: 0, image: "", studio: "", shelf: "", image_fit: "cover",
 };
 
 const check = "size-4 accent-stone-900";
@@ -38,14 +38,13 @@ export function ProductForm({
   stockWas?: number;
 }) {
   const [title, setTitle] = useState(initial.title);
-  const [price, setPrice] = useState(String(initial.price));
+  const [price, setPrice] = useState(initial.price === null ? "" : String(initial.price));
   const [tint, setTint] = useState(initial.tint);
   const [fit, setFit] = useState(initial.image_fit);
   const [image, setImage] = useState(initial.image);
   const [studio, setStudio] = useState(initial.studio);
   const [shelf, setShelf] = useState(initial.shelf);
   const [track, setTrack] = useState(initial.track_stock);
-  const service = initial.hidden;
 
   return (
     <ActionForm action={action} className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
@@ -59,16 +58,20 @@ export function ProductForm({
             <Field label="Key points (one per line)" hint="Shown as a bullet list under “The details”.">
               <textarea name="details" rows={4} maxLength={2400} defaultValue={initial.details.join("\n")} className={inputClass} />
             </Field>
-            <Field label="Web address" hint={service ? "This one is fixed. The site finds the gift-wrap service by it." : "Leave blank to make it from the name. Letters, numbers and dashes only. Changing it later breaks old links."}>
-              <input name="handle" maxLength={80} defaultValue={initial.handle} readOnly={service} placeholder="made-from-the-name" className={`${inputClass} ${service ? "bg-stone-100" : ""}`} />
+            <Field label="Web address" hint="Leave blank to make it from the name. Letters, numbers and dashes only. Changing it later breaks old links.">
+              <input name="handle" maxLength={80} defaultValue={initial.handle} placeholder="made-from-the-name" className={inputClass} />
             </Field>
           </div>
         </Card>
 
         <Card title="Price and stock">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Price (₹)"><input name="price" type="number" inputMode="numeric" required min={0} max={1000000} step={1} value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></Field>
-            <Field label="Crossed-out “was” price (₹, optional)" hint="Shows a discount badge. Must be higher than the price."><input name="compare_at" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={initial.compare_at ?? ""} className={inputClass} /></Field>
+            <Field label="Price (₹, optional)" hint="Leave it empty and no price is shown: customers tap Buy on WhatsApp and you tell them the price in the chat. Type a price and it shows on the shop.">
+              <input name="price" type="number" inputMode="numeric" min={0} max={1000000} step={1} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="No price shown" className={inputClass} />
+            </Field>
+            <Field label="Crossed-out “was” price (₹, optional)" hint={price === "" ? "Add a price first." : "Shows a discount badge. Must be higher than the price."}>
+              <input name="compare_at" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={initial.compare_at ?? ""} disabled={price === ""} className={inputClass} />
+            </Field>
             <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2">
               <input type="checkbox" name="track_stock" checked={track} onChange={(e) => setTrack(e.target.checked)} className={check} />
               Count stock for this product (turn off for services or made-to-order items)
@@ -114,7 +117,7 @@ export function ProductForm({
               )}
             </div>
             <p className="mt-2 truncate text-sm font-semibold">{title || "Product name"}</p>
-            <p className="text-sm text-stone-600">₹{Number(price || 0).toLocaleString("en-IN")}</p>
+            <p className="text-sm text-stone-600">{price === "" ? "Price on WhatsApp" : `₹${Number(price).toLocaleString("en-IN")}`}</p>
           </div>
           <div className="mt-4">
             <Field label="Tile colour">
@@ -132,47 +135,39 @@ export function ProductForm({
 
         <Card title="Visibility">
           <div className="space-y-3">
-            {service ? (
-              <input type="hidden" name="status" value="active" />
-            ) : (
-              <Field label="Status">
-                <select name="status" defaultValue={initial.status} className={inputClass}>
-                  <option value="active">Live on the shop</option>
-                  <option value="draft">Draft (hidden)</option>
-                </select>
-              </Field>
-            )}
+            <Field label="Status">
+              <select name="status" defaultValue={initial.status} className={inputClass}>
+                <option value="active">Live on the shop</option>
+                <option value="draft">Draft (hidden)</option>
+              </select>
+            </Field>
             <Field label="Sticker (optional)" hint="Short label on the tile, e.g. Bestseller."><input name="badge" maxLength={24} defaultValue={initial.badge} className={inputClass} /></Field>
             <Field label="Order on the shop" hint="Smaller numbers come first."><input name="rank" type="number" min={0} max={100000} defaultValue={initial.rank} className={inputClass} /></Field>
             <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" name="is_new" defaultChecked={initial.is_new} className={check} /> Show a “New” mark</label>
           </div>
         </Card>
 
-        {!service && (
-          <>
-            <Card title="Shelves">
-              <div className="grid gap-2">
-                {categories.map((c) => (
-                  <label key={c.handle} className="flex items-center gap-2 text-sm"><input type="checkbox" name="categories" value={c.handle} defaultChecked={initial.categories.includes(c.handle)} className={check} /> {c.title}</label>
-                ))}
-              </div>
-            </Card>
-            <Card title="Gift finder">
-              <p className="mb-2 text-sm font-semibold">Who is it for?</p>
-              <div className="grid grid-cols-2 gap-2">
-                {RECIPIENTS.map(([v, l]) => (
-                  <label key={v} className="flex items-center gap-2 text-sm"><input type="checkbox" name="recipients" value={v} defaultChecked={initial.recipients.includes(v)} className={check} /> {l}</label>
-                ))}
-              </div>
-              <p className="mt-4 mb-2 text-sm font-semibold">Good for…</p>
-              <div className="grid grid-cols-2 gap-2">
-                {OCCASIONS.map(([v, l]) => (
-                  <label key={v} className="flex items-center gap-2 text-sm"><input type="checkbox" name="occasions" value={v} defaultChecked={initial.occasions.includes(v)} className={check} /> {l}</label>
-                ))}
-              </div>
-            </Card>
-          </>
-        )}
+        <Card title="Shelves">
+          <div className="grid gap-2">
+            {categories.map((c) => (
+              <label key={c.handle} className="flex items-center gap-2 text-sm"><input type="checkbox" name="categories" value={c.handle} defaultChecked={initial.categories.includes(c.handle)} className={check} /> {c.title}</label>
+            ))}
+          </div>
+        </Card>
+        <Card title="Gift finder">
+          <p className="mb-2 text-sm font-semibold">Who is it for?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {RECIPIENTS.map(([v, l]) => (
+              <label key={v} className="flex items-center gap-2 text-sm"><input type="checkbox" name="recipients" value={v} defaultChecked={initial.recipients.includes(v)} className={check} /> {l}</label>
+            ))}
+          </div>
+          <p className="mt-4 mb-2 text-sm font-semibold">Good for…</p>
+          <div className="grid grid-cols-2 gap-2">
+            {OCCASIONS.map(([v, l]) => (
+              <label key={v} className="flex items-center gap-2 text-sm"><input type="checkbox" name="occasions" value={v} defaultChecked={initial.occasions.includes(v)} className={check} /> {l}</label>
+            ))}
+          </div>
+        </Card>
 
       </div>
       <div className="sticky bottom-0 z-10 -mx-4 border-t border-stone-300 bg-stone-100/95 px-4 py-3 backdrop-blur xl:col-span-2 lg:-mx-6 lg:px-6">

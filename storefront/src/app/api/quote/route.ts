@@ -1,9 +1,10 @@
 import { sql, shopError, friendlyOrderError } from "@/lib/server/db";
-import { allow, guard, ipKey, json, readJson, requirePost } from "@/lib/server/security";
+import { allow, guard, ipKey, json, ordersOnWhatsApp, readJson, requirePost, webCheckoutOn } from "@/lib/server/security";
 import { quoteInput } from "@/lib/server/schemas";
 
 /** Prices a bag from the database: the figures the shopper sees at checkout and the ones they will be charged. */
 export const POST = guard(async (req) => {
+  if (!webCheckoutOn()) return ordersOnWhatsApp();
   requirePost(req);
   const ip = ipKey(req.headers);
   if (!(await allow(`quote:${ip}`, 120, 600))) return json({ message: "Too many requests. Please wait a moment." }, 429);

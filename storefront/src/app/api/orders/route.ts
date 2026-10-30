@@ -3,11 +3,12 @@ import { callInTransaction, shopError, friendlyOrderError, isBusy } from "@/lib/
 import { captchaOk } from "@/lib/server/captcha";
 import { currentCustomer } from "@/lib/server/customer-auth";
 import { alertNewOrder } from "@/lib/server/notify";
-import { allow, guard, hashed, ipKey, json, normalizeEmail, rawIp, readJson, refund, requirePost } from "@/lib/server/security";
+import { allow, guard, hashed, ipKey, json, normalizeEmail, ordersOnWhatsApp, rawIp, readJson, refund, requirePost, webCheckoutOn } from "@/lib/server/security";
 import { orderInput } from "@/lib/server/schemas";
 
 /** Places a cash-on-delivery order. The browser only names products and quantities; everything else is decided in the database. */
 export const POST = guard(async (req) => {
+  if (!webCheckoutOn()) return ordersOnWhatsApp();
   requirePost(req);
   const ip = ipKey(req.headers);
   // Every attempt is counted first: even a refused order briefly holds product rows.

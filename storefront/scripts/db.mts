@@ -1,7 +1,8 @@
 /**
  * Database tasks, run from your own computer against the DATABASE_URL in .env.local:
- *   npm run db:migrate   apply every file in db/migrations (safe to repeat)
+ *   npm run db:migrate   apply every file in db/migrations (safe to repeat; add a name to apply only the files that start with it: db:migrate -- 0001)
  *   npm run db:seed      load the starter catalog (only adds what is missing, never overwrites edits)
+ *   npm run db:step -- <name>   run ONE one-time data step from db/steps (each records itself and never runs twice)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -26,11 +27,19 @@ const task = process.argv[2];
 
 if (task === "migrate") {
   const dir = path.join(here, "../db/migrations");
-  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+  const only = process.argv[3];
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".sql") && (!only || f.startsWith(only))).sort()) {
     process.stdout.write(`applying ${file} … `);
     await client.query(fs.readFileSync(path.join(dir, file), "utf8"));
     console.log("done");
   }
+} else if (task === "step") {
+  const name = (process.argv[3] ?? "").replace(/\.sql$/, "");
+  const file = path.join(here, "../db/steps", `${name}.sql`);
+  if (!/^[\w-]+$/.test(name) || !fs.existsSync(file)) throw new Error(`Usage: db:step -- <name>. Available: ${fs.readdirSync(path.join(here, "../db/steps")).map((f) => f.replace(/\.sql$/, "")).join(", ")}`);
+  process.stdout.write(`running ${name} … `);
+  await client.query(fs.readFileSync(file, "utf8"));
+  console.log("done");
 } else if (task === "seed") {
   const stock = Number(process.argv[3] ?? 10);
   const publicDir = path.join(here, "../public");
@@ -50,7 +59,8 @@ if (task === "migrate") {
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'contain')
        on conflict (handle) do nothing`,
       [
-        p.handle, p.title, p.subtitle, p.description, p.price, p.categories, p.recipients, p.occasions, p.details,
+        // Prices are left empty: the owner enters real ones in the control panel; until then customers ask on WhatsApp.
+        p.handle, p.title, p.subtitle, p.description, null, p.categories, p.recipients, p.occasions, p.details,
         p.tint, p.badge ?? "", p.rank, Boolean(p.isNew), Boolean(p.hidden), !p.hidden, p.hidden ? 0 : stock,
         has(p.image), has(p.studio), has(p.shelf),
       ],
@@ -60,6 +70,6 @@ if (task === "migrate") {
   await client.query("commit");
   console.log(`seeded ${added} new products (${products.length - added} already there)`);
 } else {
-  throw new Error("Usage: db.mts migrate | seed [stock]");
+  throw new Error("Usage: db.mts migrate [prefix] | seed [stock] | step <name>");
 }
 await client.end();

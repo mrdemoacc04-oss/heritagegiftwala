@@ -1,4 +1,5 @@
 import "server-only";
+import { adminOrigin } from "./admin-host";
 import { esc, sendMail } from "./mail";
 
 /**
@@ -8,12 +9,12 @@ import { esc, sendMail } from "./mail";
 export async function alertNewOrder(o: { number: number; name: string; city: string; total: number; items: { title: string; quantity: number }[] }) {
   const to = process.env.ORDER_ALERT_EMAIL;
   if (!to) return;
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const panel = adminOrigin();
   const lines = o.items.map((i) => `<li>${esc(i.title)} × ${i.quantity}</li>`).join("");
   await sendMail({
     to,
     subject: `New order #${o.number}: ₹${o.total.toLocaleString("en-IN")}`,
-    html: `<p>New order <b>#${o.number}</b> from ${esc(o.name)}, ${esc(o.city)}.</p><ul>${lines}</ul><p>Total: ₹${o.total.toLocaleString("en-IN")} (cash on delivery)</p><p><a href="${esc(site)}/admin/orders">Open the control panel</a></p>`,
-    text: `New order #${o.number} from ${o.name}, ${o.city}. Total ₹${o.total.toLocaleString("en-IN")} (cash on delivery). ${site}/admin/orders`,
+    html: `<p>New order <b>#${o.number}</b> from ${esc(o.name)}, ${esc(o.city)}.</p><ul>${lines}</ul><p>Total: ₹${o.total.toLocaleString("en-IN")} (cash on delivery)</p><p><a href="${esc(panel)}/admin/orders">Open the control panel</a></p>`,
+    text: `New order #${o.number} from ${o.name}, ${o.city}. Total ₹${o.total.toLocaleString("en-IN")} (cash on delivery). ${panel}/admin/orders`,
   });
 }

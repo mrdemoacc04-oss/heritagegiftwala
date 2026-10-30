@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import { WRONG_ADDRESS, adminOrigin, onAdminHost } from "./admin-host";
 import { sql, sqlOne } from "./db";
 import { esc, sendMail } from "./mail";
 import { hashPassword, needsRehash, passwordProblem, verifyAgainstDummy, verifyPassword } from "./password";
@@ -62,6 +63,8 @@ type SessionRow = { email: string; must_change_password: boolean; totp_enabled: 
 
 /** The signed-in shop owner for this request, or null. Cached for the duration of one request. */
 export const getAdmin = cache(async (): Promise<Admin | null> => {
+  // The panel only exists on its own address once ADMIN_HOST is set: a session is never honoured anywhere else.
+  if (!(await onAdminHost())) return null;
   const token = (await cookies()).get(cookieName("admin"))?.value;
   const row = await readSession<SessionRow>("admin", token, "u.email, u.must_change_password, u.totp_enabled");
   if (!row || !isAllowedAdminEmail(row.email)) return null;
@@ -185,6 +188,7 @@ async function startSession(adminId: string, email: string) {
 type LoginRow = { id: string; password_hash: string; totp_enabled: boolean; temp_expired: boolean };
 
 export async function adminLogin(emailRaw: string, password: string): Promise<{ error: string } | { next: "panel" | "verify" }> {
+  if (!(await onAdminHost())) return { error: WRONG_ADDRESS() };
   const h = await headers();
   const email = emailRaw.trim().toLowerCase().slice(0, 254);
   const ip = ipKey(h);
@@ -252,6 +256,7 @@ async function alertOnRepeatedFailures(email: string) {
 
 /** The second step: a 6-digit app code, or one of the one-time recovery codes. */
 export async function adminVerifySecondStep(codeRaw: string): Promise<{ error: string } | { ok: true }> {
+  if (!(await onAdminHost())) return { error: WRONG_ADDRESS() };
   const h = await headers();
   const jar = await cookies();
   const pending = readPending(jar.get(PENDING_NAME())?.value);
@@ -360,6 +365,7 @@ const RESET_MINUTES = 30;
  * is sent, so the response time doesn't give it away either.
  */
 export async function createPasswordReset(emailRaw: string): Promise<void> {
+  if (!(await onAdminHost())) return;
   const email = emailRaw.trim().toLowerCase().slice(0, 254);
   const ip = ipKey(await headers());
   // 5 requests per visitor an hour. There is deliberately NO per-email cap: a stranger who knows the owner's email could
@@ -376,8 +382,7 @@ export async function createPasswordReset(emailRaw: string): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   await sql("insert into shop.password_resets (token_hash, admin_id, expires_at) values ($1, $2, now() + make_interval(mins => $3))", [sha(token), row.id, RESET_MINUTES]);
   await audit("reset_requested", { adminId: row.id, email });
-  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
-  const link = `${site}/admin/reset?token=${token}`;
+  const link = `${adminOrigin()}/admin/reset?token=${token}`;
   await sendMail({
     to: email,
     subject: "Reset your shop control-panel password",
@@ -387,11 +392,13 @@ export async function createPasswordReset(emailRaw: string): Promise<void> {
 }
 
 export async function resetTokenValid(token: string): Promise<boolean> {
+  if (!(await onAdminHost())) return false;
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
   return Boolean(await sqlOne("select 1 from shop.password_resets where token_hash = $1 and used_at is null and expires_at > now()", [sha(token)]));
 }
 
 export async function completePasswordReset(token: string, password: string): Promise<string | null> {
+  if (!(await onAdminHost())) return WRONG_ADDRESS();
   const ip = ipKey(await headers());
   if (!(await allow(`admin-reset-use:${ip}`, 10, 3600))) return "Too many tries. Please wait a while.";
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return "This link isn't valid any more. Ask for a new one.";

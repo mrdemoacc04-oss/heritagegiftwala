@@ -7,7 +7,7 @@ import { CheckIcon, GiftIcon, PlusIcon } from "@phosphor-icons/react";
 import { useCatalog } from "@/components/providers/CatalogProvider";
 import { useAddToBag } from "@/lib/useAddToBag";
 import { useUI } from "@/lib/store/ui";
-import { cx, formatPrice } from "@/lib/format";
+import { cx, formatPrice, hasPrice } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 const CANDIDATES = [
@@ -45,7 +45,9 @@ export function HamperBuilder() {
   const showToast = useUI((s) => s.showToast);
 
   const chosen = picked.map((h) => byHandle.get(h)).filter((p): p is Product => Boolean(p));
-  const total = (basket?.price ?? 0) + chosen.reduce((n, p) => n + p.price, 0);
+  // A total only exists while every piece has a price; otherwise the shop quotes the hamper on WhatsApp.
+  const parts = basket ? [basket, ...chosen] : chosen;
+  const total = parts.every(hasPrice) ? parts.reduce((n, p) => n + p.price, 0) : null;
 
   const toggle = (h: string) => setPicked((cur) => (cur.includes(h) ? cur.filter((x) => x !== h) : cur.length >= MAX ? cur : [...cur, h]));
 
@@ -98,7 +100,7 @@ export function HamperBuilder() {
                           {on && <span className="font-hand text-xl text-ink-2">in the basket!</span>}
                         </span>
                         <span className="mt-2 line-clamp-1 text-xs font-bold sm:text-sm">{p.title}</span>
-                        <span className="text-xs font-semibold text-ink-2">{formatPrice(p.price)}</span>
+                        {hasPrice(p) && <span className="text-xs font-semibold text-ink-2">{formatPrice(p.price)}</span>}
                         <span
                           className={cx(
                             "absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full transition",
@@ -153,7 +155,7 @@ export function HamperBuilder() {
                   <p className="text-sm font-semibold text-ink-2">
                     Basket + {chosen.length} {chosen.length === 1 ? "goodie" : "goodies"}
                   </p>
-                  <Total value={total} />
+                  {total === null ? <p className="font-display text-xl leading-tight font-extrabold">Price on WhatsApp</p> : <Total value={total} />}
                 </div>
                 <button
                   onClick={addHamper}

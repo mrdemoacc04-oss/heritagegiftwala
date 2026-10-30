@@ -28,7 +28,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       <PageBanner
         eyebrow="the whole shop, on one page"
         title="All the gifts"
-        blurb="Every plushie, pot, lamp and little treasure from our shelves. Filter by who it's for, or by how much you'd like to spend."
+        blurb="Every plushie, pot, lamp and little treasure from our shelves. Filter by who it's for."
         tint="#d3f3ea"
         cutouts={cutouts}
         crumbs={[

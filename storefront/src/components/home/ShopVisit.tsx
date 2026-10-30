@@ -62,8 +62,8 @@ export function ShopVisit({ children }: { children?: React.ReactNode }) {
           <p className="font-hand text-3xl text-ribbon">come say hi</p>
           <h2 className="mt-1 text-[clamp(2.4rem,5vw,4.2rem)] leading-[0.95] font-extrabold">A real shop, with real shelves.</h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-ink-2">
-            Every gift on this site sits on a shelf in our shop on University Road, Patan. Drop by to pick things up, squeeze the plushies and watch the clocks
-            tick, or let us pack your order and send it to your door.
+            Every gift on this site sits on a shelf in our shop at {site.address.place}, {site.address.city}, opposite Yash Plaza. Drop by to pick things up, squeeze the plushies and watch the clocks
+            tick, or message us on WhatsApp and we&apos;ll pack your order and send it to your door.
           </p>
           <div className="mt-7 flex max-w-xl items-start gap-4 rounded-3xl border-2 border-dashed border-ink/30 bg-white p-5">
             <span className="grid size-12 shrink-0 -rotate-6 place-items-center rounded-2xl bg-ribbon text-white">
@@ -71,7 +71,7 @@ export function ShopVisit({ children }: { children?: React.ReactNode }) {
             </span>
             <div>
               <p className="font-display text-xl font-extrabold">Fix rate. Always.</p>
-              <p className="mt-1 text-ink-2">The price on the tag is the price, for everyone. No bargaining, no surprises at the counter or at checkout.</p>
+              <p className="mt-1 text-ink-2">The price on the tag is the price, for everyone. No bargaining, no surprises at the counter or on WhatsApp.</p>
             </div>
           </div>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -79,7 +79,7 @@ export function ShopVisit({ children }: { children?: React.ReactNode }) {
               href="#map"
               className="flex items-center gap-2 rounded-full bg-ink px-6 py-3.5 font-bold text-white shadow-[0_5px_0_var(--color-lagoon-600)] transition hover:bg-lagoon-800 active:translate-y-1 active:shadow-none"
             >
-              <MapPinIcon size={20} weight="bold" /> {site.address.street.split(",")[0]}, {site.address.city}
+              <MapPinIcon size={20} weight="bold" /> {site.address.place}, {site.address.city}
             </a>
             <a
               href={`https://instagram.com/${site.instagram}`}

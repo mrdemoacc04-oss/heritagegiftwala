@@ -74,6 +74,7 @@ const MESSAGES: Record<string, (detail: string) => string> = {
   EMPTY_CART: () => "Your bag is empty.",
   TOO_MANY_LINES: () => "That's a lot of different items. Please split it into two orders.",
   BAD_QUANTITY: () => "Please check the quantities in your bag.",
+  NOT_PRICED: (d) => `"${d}" has no price yet. Give it a price under Products first, then take the order.`,
   UNKNOWN_PRODUCT: () => "One of the items in your bag isn't available any more. Please remove it and try again.",
   BAD_SHIPPING: () => "Please choose a delivery option.",
   BAD_COUPON: () => "That code can't be used on this order.",

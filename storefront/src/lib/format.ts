@@ -4,6 +4,9 @@ const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR",
 
 export const formatPrice = (rupees: number) => inr.format(Math.round(rupees));
 
+/** True when the owner has put a price on the product. Without one, the shop quotes it on WhatsApp. */
+export const hasPrice = <T extends { price: number | null }>(p: T): p is T & { price: number } => p.price !== null;
+
 export const discountPercent = (price: number, compareAt?: number) =>
   compareAt && compareAt > price ? Math.round(((compareAt - price) / compareAt) * 100) : 0;
 

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { MapPinIcon, NavigationArrowIcon, PhoneIcon, StarIcon } from "@phosphor-icons/react/ssr";
 import { Ribbon } from "@/components/ui/Ribbon";
 import { cx } from "@/lib/format";
@@ -42,9 +43,17 @@ export function ShopMap({ className }: { className?: string }) {
               {address.city}, {address.state} {address.pincode}
             </span>
           </address>
-          <p className="mt-4 rotate-[-1deg] rounded-2xl bg-white/80 px-4 py-2.5 font-hand text-2xl leading-tight">
-            Look for Kabhi B Cake Shop, we&apos;re right above it ♥
-          </p>
+          <figure className="mt-5 -rotate-1">
+            <Image
+              src={site.storePhoto.src}
+              alt={`The ${site.name} shop front, with its pink sign and balloons`}
+              width={site.storePhoto.width}
+              height={site.storePhoto.height}
+              sizes="(min-width: 1024px) 30vw, 90vw"
+              className="w-full rounded-2xl border-2 border-ink object-cover shadow-[4px_4px_0_var(--color-ink)]"
+            />
+            <figcaption className="mt-2 font-hand text-2xl leading-tight">Look for the pink sign, right opposite Yash Plaza ♥</figcaption>
+          </figure>
 
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-semibold">
             <a href={`tel:${phone.tel}`} className="flex items-center gap-2 hover:underline">

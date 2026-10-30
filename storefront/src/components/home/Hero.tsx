@@ -8,7 +8,7 @@ import { motion } from "motion/react";
 import { ArrowRightIcon, GiftIcon, StorefrontIcon, TagIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { Panda } from "@/components/brand/Panda";
 import { Ribbon } from "@/components/ui/Ribbon";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, hasPrice } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 /** Where each product lands around the box: centre x/y and width, all in % of the stage. */
@@ -297,7 +297,7 @@ function OrbitItem({ product, index, stageRef }: { product: Product; index: numb
           animate={{ opacity: hover ? 1 : 0, y: hover ? 0 : -6, rotate: hover ? -3 : 0 }}
         >
           <span className="block text-xs font-bold">{product.title}</span>
-          <span className="block font-display text-sm font-extrabold text-ribbon">{formatPrice(product.price)}</span>
+          {hasPrice(product) && <span className="block font-display text-sm font-extrabold text-ribbon">{formatPrice(product.price)}</span>}
         </motion.span>
       </motion.div>
     </div>

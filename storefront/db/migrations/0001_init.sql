@@ -25,7 +25,7 @@ create table if not exists shop.products (
   title       text not null check (char_length(title) between 1 and 120),
   subtitle    text not null default '' check (char_length(subtitle) <= 160),
   description text not null default '' check (char_length(description) <= 4000),
-  price       int  not null check (price between 0 and 1000000),
+  price       int  check (price is null or price between 0 and 1000000),   -- null = no price shown, the shop quotes it on WhatsApp
   compare_at  int  check (compare_at is null or compare_at between 0 and 1000000),
   categories  text[] not null default '{}',
   recipients  text[] not null default '{}',
@@ -35,7 +35,7 @@ create table if not exists shop.products (
   badge       text not null default '' check (char_length(badge) <= 24),
   rank        int  not null default 100,
   is_new      boolean not null default false,
-  hidden      boolean not null default false,           -- kept out of listings (the gift-wrap service)
+  hidden      boolean not null default false,           -- kept out of listings
   status      text not null default 'active' check (status in ('active', 'draft')),
   track_stock boolean not null default true,
   stock       int  not null default 0 check (stock >= 0),
@@ -47,6 +47,16 @@ create table if not exists shop.products (
   updated_at  timestamptz not null default now()
 );
 create index if not exists products_status_rank on shop.products (status, rank);
+
+-- A price is optional: a product without one shows no price on the shop and is bought by messaging the shop on WhatsApp.
+-- (Databases created before this change still have the old "not null"; this relaxes it.)
+alter table shop.products alter column price drop not null;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'products_compare_needs_price' and conrelid = 'shop.products'::regclass) then
+    alter table shop.products add constraint products_compare_needs_price check (compare_at is null or price is not null);
+  end if;
+end $$;
 
 create table if not exists shop.settings (
   id                int primary key default 1 check (id = 1),
@@ -174,7 +184,7 @@ create table if not exists shop.order_items (
   quantity   int  not null check (quantity between 1 and 50),
   image      text not null default '',
   tint       text not null default '#F4E9D8',
-  wrap       jsonb
+  wrap       jsonb                                      -- no longer used: the gift-wrap service was removed
 );
 create index if not exists order_items_order on shop.order_items (order_id);
 
@@ -287,7 +297,7 @@ $$;
 -- The browser only ever says WHICH products and HOW MANY. Prices, stock, delivery fees and coupon
 -- rules are all read here, inside the database, so none of them can be tampered with from the page.
 --
--- p_items:  [{"product_id": "<uuid>", "quantity": 2, "wrap": {...} | null}, ...]
+-- p_items:  [{"product_id": "<uuid>", "quantity": 2}, ...]
 -- p_lock:   true when placing an order (locks the product rows so two buyers cannot take the last item).
 -- Errors are raised as 'CODE:detail' and mapped to friendly messages by the app.
 
@@ -394,16 +404,15 @@ begin
     if not found or prod.status <> 'active' then
       raise exception 'UNKNOWN_PRODUCT:%', coalesce(line->>'product_id', '');
     end if;
+    -- A product without a price is quoted on WhatsApp; it can't go through an order that adds up a total.
+    if prod.price is null then
+      raise exception 'NOT_PRICED:%', prod.title;
+    end if;
     lines := lines || jsonb_build_object(
       'product_id', prod.id, 'title', prod.title, 'unit_price', prod.price, 'quantity', qty,
-      'image', prod.image, 'tint', prod.tint, 'handle', prod.handle,
-      -- Gift-wrap details only count on the paid gift-wrap service line, never on an ordinary product.
-      'wrap', case when prod.hidden then line->'wrap' else null end);
+      'image', prod.image, 'tint', prod.tint, 'handle', prod.handle);
     subtotal := subtotal + prod.price * qty;
-    -- Gift wrap is a service, not stock leaving the shelves, so it doesn't count toward the 30-item cap.
-    if not prod.hidden then
-      units := units + qty;
-    end if;
+    units := units + qty;
   end loop;
 
   if not is_admin and (units > 30 or subtotal > 50000) then
@@ -544,10 +553,9 @@ begin
   returning id, number into oid, onum;
 
   for l in select * from jsonb_array_elements(priced->'lines') loop
-    insert into shop.order_items (order_id, product_id, title, unit_price, quantity, image, tint, wrap)
+    insert into shop.order_items (order_id, product_id, title, unit_price, quantity, image, tint)
     values (oid, (l->>'product_id')::uuid, l->>'title', (l->>'unit_price')::int, (l->>'quantity')::int,
-            coalesce(l->>'image', ''), coalesce(l->>'tint', '#F4E9D8'),
-            case when jsonb_typeof(l->'wrap') = 'object' then l->'wrap' end);
+            coalesce(l->>'image', ''), coalesce(l->>'tint', '#F4E9D8'));
     update shop.products set stock = stock - (l->>'quantity')::int
       where id = (l->>'product_id')::uuid and track_stock;
   end loop;
@@ -641,7 +649,7 @@ as $$
     'courier', o.courier, 'tracking_number', o.tracking_number, 'tracking_url', o.tracking_url,
     'paid', o.payment_status = 'paid',
     'items', coalesce((select jsonb_agg(jsonb_build_object('title', i.title, 'quantity', i.quantity, 'unit_price', i.unit_price,
-                                                           'image', i.image, 'tint', i.tint, 'gift_wrapped', i.wrap is not null) order by i.title)
+                                                           'image', i.image, 'tint', i.tint) order by i.title)
                        from shop.order_items i where i.order_id = o.id), '[]'::jsonb),
     'subtotal', o.subtotal, 'discount', o.discount, 'shipping_total', o.shipping_fee, 'total', o.total)
   from shop.orders o
@@ -653,8 +661,18 @@ begin new.updated_at := now(); return new; end; $$;
 drop trigger if exists products_touch on shop.products;
 create trigger products_touch before update on shop.products for each row execute function shop.touch_updated_at();
 
+-- ── One-time data steps ────────────────────────────────────────────────────
+-- Migrations can be applied over and over. A step that changes DATA (not structure) is written in its own file and
+-- records its name here, so it runs once and never repeats (and never undoes the owner's later edits).
+
+create table if not exists shop.applied_steps (
+  name       text primary key,
+  applied_at timestamptz not null default now()
+);
+
 -- ── Lock everything down ───────────────────────────────────────────────────
 
+alter table shop.applied_steps      enable row level security;
 alter table shop.categories         enable row level security;
 alter table shop.products           enable row level security;
 alter table shop.settings           enable row level security;

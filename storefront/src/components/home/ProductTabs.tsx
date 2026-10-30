@@ -5,18 +5,21 @@ import Link from "next/link";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { ProductCard } from "@/components/product/ProductCard";
+import { hasPrice } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 const tabs: { id: string; label: string; pick: (p: Product) => boolean; href: string }[] = [
   { id: "loved", label: "Most loved", pick: () => true, href: "/shop" },
-  { id: "under500", label: "Under ₹500", pick: (p) => p.price <= 500, href: "/shop?max=500" },
+  { id: "under500", label: "Under ₹500", pick: (p) => hasPrice(p) && p.price <= 500, href: "/shop?max=500" },
   { id: "her", label: "For her", pick: (p) => p.recipients.includes("her"), href: "/shop?for=her" },
   { id: "home", label: "For the home", pick: (p) => p.recipients.includes("home"), href: "/shop?for=home" },
   { id: "kids", label: "For little ones", pick: (p) => p.recipients.includes("kids"), href: "/shop?for=kids" },
 ];
 
 export function ProductTabs({ products }: { products: Product[] }) {
-  const [tab, setTab] = useState(tabs[0]);
+  // "Under ₹500" only means something once some products carry a price.
+  const available = products.some(hasPrice) ? tabs : tabs.filter((t) => t.id !== "under500");
+  const [tab, setTab] = useState(available[0]);
   const shown = products.filter(tab.pick).slice(0, 8);
 
   return (
@@ -28,7 +31,7 @@ export function ProductTabs({ products }: { products: Product[] }) {
         </div>
         <LayoutGroup id="tabs">
           <div role="tablist" aria-label="Filter gifts" className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            {tabs.map((t) => (
+            {available.map((t) => (
               <button
                 key={t.id}
                 role="tab"

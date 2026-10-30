@@ -13,7 +13,7 @@ export default async function CouponsPage() {
   const coupons = await sql<C>("select code, kind, value, min_subtotal, max_uses, used, expires_at, active, (expires_at is not null and expires_at < now()) as expired, once_per_email from shop.coupons order by created_at desc");
   return (
     <>
-      <PageTitle title="Coupons" hint="Customers type a code at checkout. The discount is worked out on the items (before delivery)." />
+      <PageTitle title="Coupons" hint="You apply a code when you take an order for a customer (Orders → Take an order). The discount is worked out on the items, before delivery. The website itself has no coupon box while customers order on WhatsApp." />
       <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
         <div>
           {coupons.length === 0 ? (

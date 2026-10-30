@@ -28,7 +28,7 @@ type Tracked = {
   tracking_number: string;
   tracking_url: string;
   paid: boolean;
-  items: { title: string; quantity: number; unit_price: number; image: string; tint: string; gift_wrapped: boolean }[];
+  items: { title: string; quantity: number; unit_price: number; image: string; tint: string }[];
   subtotal: number;
   discount: number;
   shipping_total: number;
@@ -53,15 +53,6 @@ const HEADLINES: Record<Stage, { hand: string; text: string }> = {
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : null;
 
-/** The checkout leaves the last order here so the tracking form can fill itself in. */
-function lastOrder(): { number: string; email: string } {
-  try {
-    const o = JSON.parse(sessionStorage.getItem("hgw-last-order") ?? "null");
-    if (o && !o.preview) return { number: String(o.orderNo ?? "").replace(/\D/g, ""), email: o.email ?? "" };
-  } catch {}
-  return { number: "", email: "" };
-}
-
 export function TrackOrder() {
   const live = useCatalog().live;
   const customerEmail = useAuth((s) => s.customer?.email);
@@ -72,14 +63,13 @@ export function TrackOrder() {
   const [order, setOrder] = useState<Tracked>();
 
   useEffect(() => {
-    const last = lastOrder();
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("order")?.replace(/\D/g, "") ?? "";
     const emailFromUrl = params.get("email") ?? "";
-    // sessionStorage only exists in the browser, so the form is prefilled after mount.
+    // The address bar only exists in the browser, so the form is prefilled after mount.
     /* eslint-disable react-hooks/set-state-in-effect */
-    setNumber(fromUrl || last.number);
-    setEmail(emailFromUrl || last.email);
+    setNumber(fromUrl);
+    setEmail(emailFromUrl);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -118,7 +108,7 @@ export function TrackOrder() {
 
       {!live ? (
         <p className="mt-8 rounded-2xl bg-sun-100 p-5 font-semibold">
-          Order tracking switches on when the store goes live. Until then, orders placed here are only a preview.
+          Order tracking switches on when the store goes live.
         </p>
       ) : (
         <form onSubmit={submit} className="mt-8 grid gap-4 rounded-[2rem] border-2 border-ink bg-paper p-6 shadow-[6px_6px_0_var(--color-ink)] sm:grid-cols-[1fr_1.6fr_auto] sm:items-end">
@@ -134,7 +124,7 @@ export function TrackOrder() {
             />
           </label>
           <label>
-            <span className="text-sm font-bold">Email used at checkout</span>
+            <span className="text-sm font-bold">Email on your order</span>
             <input
               required
               type="email"
@@ -162,7 +152,7 @@ export function TrackOrder() {
       {!order && (
         <div className="mt-12 flex flex-col items-center text-center text-ink-2">
           <Panda className="w-28" />
-          <p className="mt-3 max-w-sm">Your order number is in the confirmation you saw after checkout. Can&apos;t find it? Call us on {site.phone.display}.</p>
+          <p className="mt-3 max-w-sm">Your order number is in the message we sent you on WhatsApp. Can&apos;t find it? Message or call us on {site.phone.display}.</p>
         </div>
       )}
     </div>

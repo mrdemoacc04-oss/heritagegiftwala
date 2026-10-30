@@ -25,7 +25,7 @@ export const productForm = z
     handle: z.string().trim().toLowerCase().max(80),
     subtitle: text(160),
     description: text(4000, true),
-    price: money(),
+    price: optionalMoney,
     compare_at: optionalMoney,
     categories: z.array(z.string().regex(/^[a-z0-9-]{1,60}$/)).max(6),
     recipients: z.array(z.enum(RECIPIENTS)).max(6),
@@ -44,11 +44,12 @@ export const productForm = z
     image_fit: z.enum(["contain", "cover"]),
   })
   .superRefine((p, ctx) => {
-    if (p.compare_at !== null && p.compare_at <= p.price) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "The 'was' price must be higher than the price" });
+    if (p.compare_at !== null && p.price === null) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "Add a price first, or clear the 'was' price" });
+    else if (p.compare_at !== null && p.price !== null && p.compare_at <= p.price) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "The 'was' price must be higher than the price" });
   })
   .transform((p) => ({ ...p, handle: slug.safeParse(p.handle || slugify(p.title)).data ?? "" }));
 
-export const quickEdit = z.object({ id: z.uuid(), price: money(), stock: z.coerce.number().int().min(0).max(100000), stock_was: z.coerce.number().int().min(0).max(100000) });
+export const quickEdit = z.object({ id: z.uuid(), price: optionalMoney, stock: z.coerce.number().int().min(0).max(100000), stock_was: z.coerce.number().int().min(0).max(100000) });
 
 export const couponForm = z
   .object({
