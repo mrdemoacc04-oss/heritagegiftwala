@@ -13,6 +13,7 @@ import { FlyLayer } from "@/components/cart/FlyLayer";
 import { BagToast } from "@/components/cart/BagToast";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { MobileMenuOverlay } from "@/components/layout/Header";
+import { PromoPopup } from "@/components/promo/PromoPopup";
 
 export function ClientShell({ children }: { children: React.ReactNode }) {
   const setSearchOpen = useUI((s) => s.setSearchOpen);
@@ -41,7 +42,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
       raf = requestAnimationFrame(loop);
     });
     // Overlays lock the page; Lenis must stop with them.
-    const unsub = useUI.subscribe((s) => (s.cartOpen || s.searchOpen || s.menuOpen ? lenis.stop() : lenis.start()));
+    const unsub = useUI.subscribe((s) => (s.cartOpen || s.searchOpen || s.menuOpen || s.popupOpen ? lenis.stop() : lenis.start()));
     return () => {
       cancelAnimationFrame(raf);
       unsub();
@@ -67,6 +68,7 @@ export function ClientShell({ children }: { children: React.ReactNode }) {
       <CartDrawer />
       <SearchOverlay />
       <MobileMenuOverlay />
+      <PromoPopup />
       <FlyLayer />
       <BagToast />
     </MotionConfig>

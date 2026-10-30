@@ -6,7 +6,7 @@ import type { Category, Product, ShopSettings } from "@/lib/types";
 
 type Catalog = { products: Product[]; categories: Category[]; settings: ShopSettings; /** True once the shop is connected to its database; false means the built-in preview catalog. */ live: boolean };
 
-const defaults: ShopSettings = { shippingFlat: site.shippingFlat, shippingExpress: site.expressShipping, freeShippingFrom: site.freeShippingThreshold };
+const defaults: ShopSettings = { shippingFlat: site.shippingFlat, shippingExpress: site.expressShipping, freeShippingFrom: site.freeShippingThreshold, popup: null };
 
 const CatalogContext = createContext<Catalog>({ products: [], categories: [], settings: defaults, live: false });
 

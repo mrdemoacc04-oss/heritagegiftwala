@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { ActionForm, SubmitButton } from "./forms";
 import { ImageUpload } from "./ImageUpload";
-import { Card, Field, inputClass } from "./ui";
+import { Card, Field, Switch, inputClass } from "./ui";
 import type { FormState } from "@/app/(admin)/admin/_actions/auth";
 
 export type ProductValues = {
-  title: string; handle: string; subtitle: string; description: string; price: number | null; compare_at: number | null;
+  title: string; handle: string; subtitle: string; description: string; price: number | null; compare_at: number | null; show_price: boolean;
   categories: string[]; recipients: string[]; occasions: string[]; details: string[]; tint: string; badge: string; rank: number;
   is_new: boolean; status: "active" | "draft"; track_stock: boolean; stock: number; image: string; studio: string; shelf: string; image_fit: "contain" | "cover";
 };
@@ -17,7 +17,7 @@ const OCCASIONS: [string, string][] = [["birthday", "Birthday"], ["anniversary",
 const TINTS = ["#FFD6DE", "#FFE0EC", "#D3F3EA", "#FFE3CC", "#E6DEFF", "#F4E9D8", "#D6EEFF", "#F7E4D4", "#FFE9B8", "#FFF0A8", "#E1E7F0", "#ECE7E2"];
 
 export const blankProduct: ProductValues = {
-  title: "", handle: "", subtitle: "", description: "", price: null, compare_at: null, categories: [], recipients: [], occasions: [], details: [], tint: "#F4E9D8",
+  title: "", handle: "", subtitle: "", description: "", price: null, compare_at: null, show_price: true, categories: [], recipients: [], occasions: [], details: [], tint: "#F4E9D8",
   badge: "", rank: 100, is_new: false, status: "active", track_stock: true, stock: 0, image: "", studio: "", shelf: "", image_fit: "cover",
 };
 
@@ -39,6 +39,8 @@ export function ProductForm({
 }) {
   const [title, setTitle] = useState(initial.title);
   const [price, setPrice] = useState(initial.price === null ? "" : String(initial.price));
+  const [mrp, setMrp] = useState(initial.compare_at === null ? "" : String(initial.compare_at));
+  const [showPrice, setShowPrice] = useState(initial.show_price);
   const [tint, setTint] = useState(initial.tint);
   const [fit, setFit] = useState(initial.image_fit);
   const [image, setImage] = useState(initial.image);
@@ -66,12 +68,20 @@ export function ProductForm({
 
         <Card title="Price and stock">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Price (₹, optional)" hint="Leave it empty and no price is shown: customers tap Buy on WhatsApp and you tell them the price in the chat. Type a price and it shows on the shop.">
-              <input name="price" type="number" inputMode="numeric" min={0} max={1000000} step={1} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="No price shown" className={inputClass} />
+            <Field label="Selling price (₹)" hint="What the customer pays. Leave it empty and there is no price: customers tap Buy on WhatsApp and you tell them the price in the chat.">
+              <input name="price" type="number" inputMode="numeric" min={0} max={1000000} step={1} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="No price" className={inputClass} />
             </Field>
-            <Field label="Crossed-out “was” price (₹, optional)" hint={price === "" ? "Add a price first." : "Shows a discount badge. Must be higher than the price."}>
-              <input name="compare_at" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={initial.compare_at ?? ""} disabled={price === ""} className={inputClass} />
+            <Field label="MRP (₹, optional)" hint={price === "" ? "Add a selling price first." : "The printed maximum retail price. The shop shows it crossed out beside your price, with the saving. Must be higher than the selling price."}>
+              <input name="compare_at" type="number" inputMode="numeric" min={0} max={1000000} step={1} value={mrp} onChange={(e) => setMrp(e.target.value)} disabled={price === ""} className={inputClass} />
             </Field>
+            <Switch
+              name="show_price"
+              checked={showPrice}
+              onChange={setShowPrice}
+              label="Show the price on the shop"
+              hint="Switch it off to keep the price saved but hide it: customers see “Price on WhatsApp”. (The shop-wide switch under Settings can also hide every price.)"
+              className="sm:col-span-2"
+            />
             <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2">
               <input type="checkbox" name="track_stock" checked={track} onChange={(e) => setTrack(e.target.checked)} className={check} />
               Count stock for this product (turn off for services or made-to-order items)
@@ -117,7 +127,16 @@ export function ProductForm({
               )}
             </div>
             <p className="mt-2 truncate text-sm font-semibold">{title || "Product name"}</p>
-            <p className="text-sm text-stone-600">{price === "" ? "Price on WhatsApp" : `₹${Number(price).toLocaleString("en-IN")}`}</p>
+            <p className="text-sm text-stone-600">
+              {price === "" || !showPrice ? (
+                "Price on WhatsApp"
+              ) : (
+                <>
+                  <span className="font-semibold text-stone-900">₹{Number(price).toLocaleString("en-IN")}</span>
+                  {mrp !== "" && Number(mrp) > Number(price) && <s className="ml-2 text-stone-400">₹{Number(mrp).toLocaleString("en-IN")}</s>}
+                </>
+              )}
+            </p>
           </div>
           <div className="mt-4">
             <Field label="Tile colour">

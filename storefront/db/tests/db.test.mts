@@ -297,7 +297,24 @@ describe("cheating attempts", () => {
     assert.equal((await one("select price from shop.products where id = $1", [id])).price, null);
   });
 
-  test("the one-time WhatsApp step removes gift wrap and clears prices once, then leaves later prices alone", async () => {
+  test("a price is shown by default, and the shop-wide and popup settings only accept safe values", async () => {
+    const id = await product({ price: 300 });
+    assert.equal((await one("select show_price from shop.products where id = $1", [id])).show_price, true);
+    assert.equal((await one("select show_prices, popup_enabled from shop.settings where id = 1")).show_prices, true);
+    assert.equal((await one("select popup_enabled from shop.settings where id = 1")).popup_enabled, false, "the popup starts switched off");
+    for (const ok of ["", "whatsapp", "/", "/shop", "/products/lamp?x=1", "https://example.com/sale"]) {
+      await q("update shop.settings set popup_button_url = $1 where id = 1", [ok]);
+    }
+    for (const bad of ["javascript:alert(1)", "//evil.example", "http://plain.example", "data:text/html,x", "/a b", "/\\evil.example", "https://evil.example\\@x", "https://", "x".repeat(301), "ftp://x.example"]) {
+      await assert.rejects(() => q("update shop.settings set popup_button_url = $1 where id = 1", [bad]), /check/, bad);
+    }
+    await assert.rejects(() => q("update shop.settings set popup_tint = 'red' where id = 1"), /check/);
+    await assert.rejects(() => q("update shop.settings set popup_delay = 61 where id = 1"), /check/);
+    await assert.rejects(() => q("update shop.settings set popup_reshow_days = 0 where id = 1"), /check/);
+    await q("update shop.settings set popup_button_url = '' where id = 1");
+  });
+
+  test("the one-time WhatsApp step removes gift wrap and switches prices off once, then leaves later choices alone", async () => {
     const step = fs.readFileSync(path.join(here, "../steps/2026-10-whatsapp-ordering.sql"), "utf8");
     const wrap = await product({ handle: "gift-wrap", price: 49 });
     const keep = await product({ price: 800 });
@@ -305,12 +322,12 @@ describe("cheating attempts", () => {
     await q("delete from shop.applied_steps where name = '2026-10-whatsapp-ordering'");
     await q(step);
     assert.equal((await q("select 1 from shop.products where id = $1", [wrap])).rowCount, 0, "the gift-wrap product is gone");
-    const cleared = await one("select price, compare_at from shop.products where id = $1", [keep]);
-    assert.deepEqual([cleared.price, cleared.compare_at], [null, null]);
-    // The owner types a price in; applying the migrations again must not wipe it.
-    await q("update shop.products set price = 650 where id = $1", [keep]);
+    const hidden = await one("select price, compare_at, show_price from shop.products where id = $1", [keep]);
+    assert.deepEqual([hidden.price, hidden.compare_at, hidden.show_price], [800, 999, false], "the numbers stay, the switch goes off");
+    // The owner switches a price back on; applying the step again must not switch it off.
+    await q("update shop.products set show_price = true, price = 650 where id = $1", [keep]);
     await q(step);
-    assert.equal((await one("select price from shop.products where id = $1", [keep])).price, 650);
+    assert.deepEqual(Object.values(await one("select price, show_price from shop.products where id = $1", [keep])), [650, true]);
   });
 
   test("normalize_email treats +tags and Gmail dots as the same mailbox", async () => {

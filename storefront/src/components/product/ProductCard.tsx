@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
 import { WishlistButton } from "./WishlistButton";
 import { useAddToBag } from "@/lib/useAddToBag";
-import { cx, formatPrice, hasPrice } from "@/lib/format";
+import { cx, discountPercent, formatPrice, hasPrice } from "@/lib/format";
 import type { Product } from "@/lib/types";
 
 const badgeTones = ["bg-sun text-ink", "bg-ribbon text-white", "bg-ink text-white", "bg-white text-ink"];
@@ -109,7 +109,15 @@ export function ProductCard({ product, priority, index = 0 }: { product: Product
         {hasPrice(product) && (
           <p className="mt-1.5 flex items-baseline gap-2">
             <span className="font-display text-lg font-extrabold">{formatPrice(product.price)}</span>
-            {product.compareAtPrice && <span className="text-sm text-ink-3 line-through">{formatPrice(product.compareAtPrice)}</span>}
+            {product.compareAtPrice && (
+              <>
+                <span className="text-sm text-ink-3 line-through decoration-ribbon/70">
+                  <span className="sr-only">MRP </span>
+                  {formatPrice(product.compareAtPrice)}
+                </span>
+                <span className="rounded-full bg-lagoon-100 px-2 py-0.5 text-xs font-bold text-lagoon-800">{discountPercent(product.price, product.compareAtPrice)}% off</span>
+              </>
+            )}
           </p>
         )}
       </div>

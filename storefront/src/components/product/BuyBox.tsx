@@ -7,7 +7,7 @@ import { CheckIcon, GiftIcon, HandbagSimpleIcon, MinusIcon, PlusIcon, Storefront
 import { WishlistButton } from "./WishlistButton";
 import { useCart } from "@/lib/store/cart";
 import { useAddToBag } from "@/lib/useAddToBag";
-import { cx, formatPrice, hasPrice } from "@/lib/format";
+import { cx, discountPercent, formatPrice, hasPrice } from "@/lib/format";
 import { site } from "@/lib/site";
 import type { Product } from "@/lib/types";
 
@@ -43,9 +43,16 @@ export function BuyBox({ product }: { product: Product }) {
     <div>
       {hasPrice(product) ? (
         <>
-          <div className="flex items-baseline gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-display text-4xl font-extrabold">{formatPrice(product.price)}</span>
-            {product.compareAtPrice && <span className="text-lg text-ink-3 line-through">{formatPrice(product.compareAtPrice)}</span>}
+            {product.compareAtPrice && (
+              <span className="text-lg text-ink-3">
+                MRP <span className="line-through decoration-ribbon/70 decoration-2">{formatPrice(product.compareAtPrice)}</span>
+              </span>
+            )}
+            {product.compareAtPrice && (
+              <span className="rounded-full bg-sun px-3 py-1 text-xs font-extrabold">You save {discountPercent(product.price, product.compareAtPrice)}%</span>
+            )}
             <span className="flex items-center gap-1 rounded-full bg-lagoon-100 px-3 py-1 text-xs font-bold text-lagoon-800">
               <TagIcon size={13} weight="bold" /> Fix rate
             </span>
@@ -112,7 +119,10 @@ export function BuyBox({ product }: { product: Product }) {
       <div className="pdp-sticky fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-line bg-cream/95 px-4 py-3 backdrop-blur lg:hidden">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{product.title}</p>
-          <p className="font-display font-extrabold">{hasPrice(product) ? formatPrice(product.price) : "Price on WhatsApp"}</p>
+          <p className="font-display font-extrabold">
+            {hasPrice(product) ? formatPrice(product.price) : "Price on WhatsApp"}
+            {hasPrice(product) && product.compareAtPrice && <span className="ml-2 text-sm font-semibold text-ink-3 line-through decoration-ribbon/70">{formatPrice(product.compareAtPrice)}</span>}
+          </p>
         </div>
         <button onClick={onBuy} disabled={!product.inStock || !whatsapp} className="flex h-12 items-center gap-2 rounded-full bg-[#25d366] px-5 font-bold text-ink disabled:opacity-40">
           <WhatsappLogoIcon size={20} weight="fill" /> {product.inStock ? "Buy" : "Sold out"}

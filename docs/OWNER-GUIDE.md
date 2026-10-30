@@ -18,16 +18,23 @@ Changes appear on the website straight away.
 | --- | --- |
 | **Dashboard** | New orders, today's and this week's sales, products running low |
 | **Orders** | Every order, with search and filters. Open one to pack, ship and track it |
-| **Products** | Add products, change prices and stock, upload photos |
-| **Shelves** | The groups customers browse (Soft Toys, Lamps & Clocks…) |
+| **Products** | Add products, change prices, MRP and stock, switch prices on or off, upload photos |
+| **Shelves** | The groups customers browse (Soft Toys, Lamps & Clocks…): add, rename, reorder, recolour, delete |
 | **Coupons** | Discount codes |
-| **Delivery** | Delivery charges and the free-delivery limit |
+| **Sale popup** | The box that pops up on the shop to announce a sale: write it, preview it, switch it on or off |
+| **Settings** | A switch to hide every price on the shop, and the delivery charges |
 | **My login** | Change your password, manage two-step sign-in and recovery codes, sign out of every device, and see recent sign-ins (a good place to spot anything odd) |
 
 ## Change a price or the stock
 **Products**: type the new price or stock number in that product's row and press **Save**. Done.
 
-**Prices are optional.** Leave a price **empty** and the shop shows no price on that product: customers press Buy on WhatsApp and you tell them the price in the chat. Type a price and it shows on the shop straight away. Clear it again to hide it. (The Butterfly Tumbler example: price empty = "Message us for today's price"; price 899 = "₹899".)
+**Prices are optional, and you can switch each one on or off.**
+- **Price empty** = no price: the shop says "Message us for today's price" and customers press Buy on WhatsApp.
+- **Price typed + "Show the price on the shop" switch ON** = the price shows on the shop straight away.
+- **Price typed + switch OFF** = the price stays saved but is hidden (same "Price on WhatsApp" wording). Handy for keeping your numbers while you decide. In the **Products** list the small **Show** switch next to each price does the same, so you can turn prices on one by one.
+- **Settings → "Show prices on the shop"** hides every price at once, whatever each product's own switch says. A price shows only when both switches are on.
+
+**MRP:** on a product's own page, type the printed MRP (it must be higher than the selling price). The shop then shows it crossed out beside your price, with "25% off" on the tile and "You save 25%" on the product page. Leave it empty for no MRP. It is hidden whenever the price is hidden.
 
 ## Add a new product
 **Products → Add a product.**
@@ -58,8 +65,19 @@ Orders arrive as WhatsApp messages. To follow one through (and let the customer 
 
 By default each coupon works **once per customer** (the same email or phone number can't use it twice, even if they add dots or `+something` to the email). Untick *One use per customer* for a code you want people to be able to reuse. Free delivery is judged on the amount the customer pays after the coupon.
 
+## Shelves
+**Shelves**: type a name and a web address (like `rakhi-festive`), pick a colour, a short line and a **cover product** (the picture on the homepage) and press **Add shelf**. Each shelf in the list can be renamed, reordered (smaller numbers first), recoloured, given another cover, or deleted. Changing a shelf's web address moves its products over and breaks old links to it. Deleting a shelf keeps its products in the shop; they just come off that shelf. To put a product on a shelf, tick it in the **Shelves** box on that product's page.
+
+## Sale popup
+**Sale popup**: a box that appears on the shop a few seconds after someone arrives, to announce a sale.
+1. Write a **heading** (required), an optional small **sticker** (like `DIWALI SALE`), a line or two of text, and optionally a button: its label and where it goes (`whatsapp` for a chat with the shop, a page like `/shop`, or a full `https://` address). Add a picture and pick a colour if you like. The preview on the right shows exactly how it will look.
+2. Choose **how many seconds** it waits, **how many days** it stays away after someone closes it, and optionally a **last day** after which it switches itself off.
+3. Switch **The popup is ON** and press **Save popup**. It shows within a minute.
+
+To end a sale, switch it OFF and save (your words stay saved for next time). When you change the popup and save it again, people who had closed the old one see the new one once. It never shows on the checkout page.
+
 ## Delivery charges
-**Delivery**: standard price, express price, and the order value from which standard delivery is free (0 turns free delivery off).
+**Settings → Delivery charges**: standard price, express price, and the order value from which standard delivery is free (0 turns free delivery off).
 
 ## How customers track an order
 **Track order** in the site menu: order number plus the email on the order (orders you enter under **Take an order**). They see Placed → Packed → On its way → Delivered, and your courier details. Customers with an account also see their orders under **Account**.

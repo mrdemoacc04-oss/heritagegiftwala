@@ -2,14 +2,15 @@
 -- run it on purpose, once, with `npm run db:step -- 2026-10-whatsapp-ordering`, before the owner has typed in real prices.
 -- It is also recorded in shop.applied_steps, so a second run does nothing:
 --   * the paid gift-wrap add-on is gone, so its product is removed (past orders keep their own copy of what they bought)
---   * no price is shown until the owner types one into the control panel, so every price is cleared
--- Needs the 0001 migration first (it creates shop.applied_steps and lets a price be empty).
+--   * no price is shown until the owner switches it on in the control panel: every product's "show the price" switch is turned OFF.
+--     The numbers stay on file (most are placeholders from the first set-up, apart from the two brass lamps), so nothing is lost.
+-- Needs the 0001 migration first (it creates shop.applied_steps and the show_price switch).
 
 do $$
 begin
   if not exists (select 1 from shop.applied_steps where name = '2026-10-whatsapp-ordering') then
     delete from shop.products where handle = 'gift-wrap';
-    update shop.products set price = null, compare_at = null;
+    update shop.products set show_price = false;
     insert into shop.applied_steps (name) values ('2026-10-whatsapp-ordering');
   end if;
 end $$;

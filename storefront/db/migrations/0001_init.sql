@@ -51,6 +51,8 @@ create index if not exists products_status_rank on shop.products (status, rank);
 -- A price is optional: a product without one shows no price on the shop and is bought by messaging the shop on WhatsApp.
 -- (Databases created before this change still have the old "not null"; this relaxes it.)
 alter table shop.products alter column price drop not null;
+-- A price can be kept on file and hidden from the shop with this switch (on by default). The crossed-out MRP is the column `compare_at`.
+alter table shop.products add column if not exists show_price boolean not null default true;
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'products_compare_needs_price' and conrelid = 'shop.products'::regclass) then
@@ -66,6 +68,27 @@ create table if not exists shop.settings (
   updated_at        timestamptz not null default now()
 );
 insert into shop.settings (id) values (1) on conflict do nothing;
+
+-- Shop-wide switch for showing prices at all, and the sale popup the owner can edit and switch on or off.
+alter table shop.settings add column if not exists show_prices boolean not null default true;
+alter table shop.settings add column if not exists popup_enabled boolean not null default false;
+alter table shop.settings add column if not exists popup_label text not null default '' check (char_length(popup_label) <= 30);
+alter table shop.settings add column if not exists popup_title text not null default '' check (char_length(popup_title) <= 80);
+alter table shop.settings add column if not exists popup_text text not null default '' check (char_length(popup_text) <= 300);
+alter table shop.settings add column if not exists popup_button_text text not null default '' check (char_length(popup_button_text) <= 30);
+alter table shop.settings add column if not exists popup_button_url text not null default '';
+-- Where the button goes: nothing, the word "whatsapp", a page on the shop ("/shop"), or an https address. Never javascript:, //other-site or
+-- a backslash (browsers read "/\evil.example" as "//evil.example"). Dropped and re-added each time so a tightened rule reaches databases that already have the old one.
+alter table shop.settings drop constraint if exists settings_popup_button_url_check;
+alter table shop.settings add constraint settings_popup_button_url_check
+  check (char_length(popup_button_url) <= 300 and (popup_button_url = '' or popup_button_url = 'whatsapp' or popup_button_url ~ '^/([^/[:space:]\\][^[:space:]\\]*)?$' or popup_button_url ~* '^https://[^[:space:]\\]+$'));
+alter table shop.settings add column if not exists popup_image text not null default '' check (char_length(popup_image) <= 500);
+alter table shop.settings add column if not exists popup_tint text not null default '#FFD6DE' check (popup_tint ~ '^#[0-9A-Fa-f]{6}$');
+alter table shop.settings add column if not exists popup_delay int not null default 4 check (popup_delay between 0 and 60);
+alter table shop.settings add column if not exists popup_reshow_days int not null default 1 check (popup_reshow_days between 1 and 30);
+alter table shop.settings add column if not exists popup_ends_on date;
+-- Changes every time the popup is saved, so visitors who closed an older version see the new one.
+alter table shop.settings add column if not exists popup_updated_at timestamptz not null default now();
 
 create table if not exists shop.coupons (
   code         text primary key check (code ~ '^[A-Z0-9_-]{3,24}$'),

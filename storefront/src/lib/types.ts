@@ -56,10 +56,31 @@ export type CartLine = {
   missed?: number;
 };
 
-/** Delivery fees the owner can change from the admin panel. */
+/** The sale popup the owner edits in the control panel. Only a popup that is switched on, and not past its last day, reaches the shop. */
+export type Popup = {
+  label: string;
+  title: string;
+  text: string;
+  buttonText: string;
+  /** "", "whatsapp", a page on the shop ("/shop") or an https address. */
+  buttonUrl: string;
+  image: string;
+  tint: string;
+  /** Seconds on the page before it appears. */
+  delay: number;
+  /** Once closed, it stays away this many days. */
+  reshowDays: number;
+  /** The moment it stops showing (end of the owner's last day), or null for no end. */
+  endsAt: string | null;
+  /** Changes whenever the owner saves the popup, so people who closed an older one see the new one. */
+  version: number;
+};
+
+/** Delivery fees and the sale popup, which the owner can change from the admin panel. */
 export type ShopSettings = {
   shippingFlat: number;
   shippingExpress: number;
   /** Standard delivery is free from this subtotal; 0 switches the offer off. */
   freeShippingFrom: number;
+  popup: Popup | null;
 };

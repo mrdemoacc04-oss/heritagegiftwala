@@ -9,6 +9,7 @@ type UIState = {
   cartOpen: boolean;
   searchOpen: boolean;
   menuOpen: boolean;
+  popupOpen: boolean;
   flights: Flight[];
   toast?: Toast;
   /** Increments every time something lands in the bag, so the bag icon can wiggle. */
@@ -16,6 +17,7 @@ type UIState = {
   setCartOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   setMenuOpen: (open: boolean) => void;
+  setPopupOpen: (open: boolean) => void;
   fly: (src: string, from: DOMRect) => void;
   land: (id: number) => void;
   showToast: (t: Omit<Toast, "id">) => void;
@@ -28,11 +30,13 @@ export const useUI = create<UIState>()((set, get) => ({
   cartOpen: false,
   searchOpen: false,
   menuOpen: false,
+  popupOpen: false,
   flights: [],
   bump: 0,
   setCartOpen: (cartOpen) => set(cartOpen ? { cartOpen, menuOpen: false, toast: undefined } : { cartOpen }),
   setSearchOpen: (searchOpen) => set({ searchOpen, menuOpen: false }),
   setMenuOpen: (menuOpen) => set({ menuOpen }),
+  setPopupOpen: (popupOpen) => set({ popupOpen }),
   fly: (src, from) => set({ flights: [...get().flights, { id: ++seq, src, from }] }),
   land: (id) => set({ flights: get().flights.filter((f) => f.id !== id), bump: get().bump + 1 }),
   showToast: (t) => set({ toast: { ...t, id: ++seq } }),

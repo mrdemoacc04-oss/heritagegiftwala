@@ -88,3 +88,45 @@ export function TabLink({ href, active, children }: { href: string; active: bool
     </Link>
   );
 }
+
+/**
+ * An on/off switch. Underneath it is a checkbox, so it submits with its form like any other (ticked = "on", not ticked = absent).
+ * Use `checked` and `onChange` to follow it in a live preview, or `defaultChecked` when nothing else needs to know.
+ */
+export function Switch({
+  name,
+  label,
+  hint,
+  checked,
+  defaultChecked,
+  onChange,
+  className,
+}: {
+  name: string;
+  label: string;
+  hint?: string;
+  checked?: boolean;
+  defaultChecked?: boolean;
+  onChange?: (on: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label className={cx("flex cursor-pointer items-start gap-3", className)}>
+      <input
+        type="checkbox"
+        role="switch"
+        name={name}
+        className="peer sr-only"
+        {...(checked !== undefined ? { checked, onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.checked) } : { defaultChecked })}
+      />
+      <span
+        aria-hidden
+        className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-stone-300 transition after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition peer-checked:bg-emerald-600 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-stone-900/40"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-stone-800">{label}</span>
+        {hint && <span className="block text-xs text-stone-500">{hint}</span>}
+      </span>
+    </label>
+  );
+}

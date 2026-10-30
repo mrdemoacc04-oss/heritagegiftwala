@@ -61,6 +61,10 @@ Tests for each of these try to cheat and fail (`npm run test:db`, `npm run test:
 
 Customers buy on WhatsApp, so the website's own order endpoints (`/api/quote`, `/api/orders`) answer "410: orders are taken on WhatsApp" and do nothing, unless `WEB_CHECKOUT=on` is set on Vercel. The WhatsApp button only opens the customer's own WhatsApp with a written message: nothing is sent to the website, so there is nothing to spam. The protections above still apply to orders the owner takes in the control panel, and to the endpoints if they are ever switched back on.
 
+## The sale popup and the owner's other text
+
+Everything the owner types (popup, product and shelf text) is shown as plain text, never as code. The popup's button can only go to nothing, to WhatsApp, to a page on the shop, or to an `https://` address: `javascript:`, `data:`, `http:` and `//other-site` links are refused by the form and again by the database. Its picture must be one uploaded through the panel. Only the owner, signed in on the control-panel address, can change any of it.
+
 ## The control panel has its own address
 
 With `ADMIN_HOST=admin.heritagegiftwala.in` the panel exists only there: the shop's address redirects `/admin` to it, and the panel's address answers 404 to every shop page. A second lock sits in the code: a sign-in, a session, a reset link or an upload is refused on any other address, even if a request got past the routing rules. The sign-in cookie is tied to the panel's address (`__Host-`), so it is never even sent to the shop.

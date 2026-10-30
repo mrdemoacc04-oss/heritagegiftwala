@@ -14,7 +14,7 @@ const refresh = () => {
   revalidatePath("/", "layout");
 };
 
-const COLUMNS = "title, handle, subtitle, description, price, compare_at, categories, recipients, occasions, details, tint, badge, rank, is_new, status, track_stock, stock, image, studio, shelf, image_fit";
+const COLUMNS = "title, handle, subtitle, description, price, compare_at, show_price, categories, recipients, occasions, details, tint, badge, rank, is_new, status, track_stock, stock, image, studio, shelf, image_fit";
 
 function fromForm(formData: FormData) {
   return productForm.safeParse({
@@ -24,6 +24,7 @@ function fromForm(formData: FormData) {
     description: formData.get("description") ?? "",
     price: formData.get("price") ?? "",
     compare_at: formData.get("compare_at") ?? "",
+    show_price: formData.get("show_price"),
     categories: formData.getAll("categories").map(String),
     recipients: formData.getAll("recipients").map(String),
     occasions: formData.getAll("occasions").map(String),
@@ -66,8 +67,8 @@ export async function createProductAction(_: FormState, formData: FormData): Pro
   let id: string;
   try {
     const [row] = await sql<{ id: string }>(
-      `insert into shop.products (${COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning id`,
-      [v.title, v.handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, v.status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit],
+      `insert into shop.products (${COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) returning id`,
+      [v.title, v.handle, v.subtitle, v.description, v.price, v.compare_at, v.show_price, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, v.status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit],
     );
     id = row.id;
   } catch (e) {
@@ -96,10 +97,10 @@ export async function updateProductAction(id: string, _: FormState, formData: Fo
       `update shop.products set title=$2, handle=$3, subtitle=$4, description=$5, price=$6, compare_at=$7, categories=$8, recipients=$9, occasions=$10,
               details=$11, tint=$12, badge=$13, rank=$14, is_new=$15, status=$16, track_stock=$17,
               stock = case when $23::int is not null and $18 = $23 then stock else $18 end,
-              image=$19, studio=$20, shelf=$21, image_fit=$22
+              image=$19, studio=$20, shelf=$21, image_fit=$22, show_price=$24
         where id = $1 and ($23::int is null or $18 = $23 or stock = $23)
         returning id`,
-      [id, v.title, v.handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, v.status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit, stockWas],
+      [id, v.title, v.handle, v.subtitle, v.description, v.price, v.compare_at, v.categories, v.recipients, v.occasions, v.details, v.tint, v.badge, v.rank, v.is_new, v.status, v.track_stock, v.stock, v.image, v.studio, v.shelf, v.image_fit, stockWas, v.show_price],
     );
     if (!rows.length) return { error: "The stock changed while you were editing (customers have bought some). Nothing was saved. Reload this page and try again." };
   } catch (e) {
@@ -122,12 +123,13 @@ export async function quickEditAction(formData: FormData) {
     `with cur as (select stock from shop.products where id = $1 for update)
      update shop.products p
         set price = $2::int,
+            show_price = $5::boolean,
             compare_at = case when $2::int is null then null else p.compare_at end,
             stock = case when $3::int = $4::int then p.stock when cur.stock = $4::int then $3::int else p.stock end
        from cur
       where p.id = $1
       returning ($3::int <> $4::int and cur.stock <> $4::int) as conflict`,
-    [p.data.id, p.data.price, p.data.stock, p.data.stock_was],
+    [p.data.id, p.data.price, p.data.stock, p.data.stock_was, p.data.show_price],
   );
   refresh();
   revalidatePath("/admin/products");

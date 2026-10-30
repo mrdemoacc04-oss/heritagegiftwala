@@ -29,7 +29,7 @@ npm run db:seed                             # loads the 28 starter products (10 
 npm run admin:create -- owner@yourmail.com --temporary   # a temporary password the owner must change at first sign-in
 ```
 
-The three above are safe to run again. (A fourth kind of command, `npm run db:step -- <name>`, runs a **one-time** data change from `storefront/db/steps/` and is never part of normal set-up. The one that exists, `2026-10-whatsapp-ordering`, removes the gift-wrap product and clears the placeholder prices; run it once, **before** the owner has entered real prices, or never.) `db:seed` only adds what is missing and never overwrites edits. Delete `.env.local` afterwards if you like; it is not committed.
+The three above are safe to run again. (A fourth kind of command, `npm run db:step -- <name>`, runs a **one-time** data change from `storefront/db/steps/` and is never part of normal set-up. The one that exists, `2026-10-whatsapp-ordering`, removes the gift-wrap product and switches every product's "show the price" switch OFF (the numbers stay saved); run it once, **before** the owner has switched real prices on, or never.) `db:seed` only adds what is missing and never overwrites edits. Delete `.env.local` afterwards if you like; it is not committed.
 
 `admin:create` asks for the password at a hidden prompt. Use `--temporary` when you are choosing the password for someone else: at first sign-in they are made to pick their own (and, in production, to set up two-step sign-in) before the panel unlocks.
 

@@ -27,6 +27,7 @@ export const productForm = z
     description: text(4000, true),
     price: optionalMoney,
     compare_at: optionalMoney,
+    show_price: checkbox,
     categories: z.array(z.string().regex(/^[a-z0-9-]{1,60}$/)).max(6),
     recipients: z.array(z.enum(RECIPIENTS)).max(6),
     occasions: z.array(z.enum(OCCASIONS)).max(6),
@@ -44,12 +45,12 @@ export const productForm = z
     image_fit: z.enum(["contain", "cover"]),
   })
   .superRefine((p, ctx) => {
-    if (p.compare_at !== null && p.price === null) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "Add a price first, or clear the 'was' price" });
-    else if (p.compare_at !== null && p.price !== null && p.compare_at <= p.price) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "The 'was' price must be higher than the price" });
+    if (p.compare_at !== null && p.price === null) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "Add a price first, or clear the MRP" });
+    else if (p.compare_at !== null && p.price !== null && p.compare_at <= p.price) ctx.addIssue({ code: "custom", path: ["compare_at"], message: "The MRP must be higher than the price" });
   })
   .transform((p) => ({ ...p, handle: slug.safeParse(p.handle || slugify(p.title)).data ?? "" }));
 
-export const quickEdit = z.object({ id: z.uuid(), price: optionalMoney, stock: z.coerce.number().int().min(0).max(100000), stock_was: z.coerce.number().int().min(0).max(100000) });
+export const quickEdit = z.object({ id: z.uuid(), price: optionalMoney, show_price: checkbox, stock: z.coerce.number().int().min(0).max(100000), stock_was: z.coerce.number().int().min(0).max(100000) });
 
 export const couponForm = z
   .object({
@@ -66,6 +67,39 @@ export const couponForm = z
   });
 
 export const settingsForm = z.object({ shipping_flat: money(100_000), shipping_express: money(100_000), free_shipping_from: money() });
+
+export const showPricesForm = z.object({ show_prices: checkbox });
+
+/** Where the popup's button goes: nothing, the word "whatsapp", a page on the shop ("/shop"), or a full https address. Never javascript: and the like. */
+const popupLink = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((u) => u === "" || /^(whatsapp|\/([^/\s\\][^\s\\]*)?|https:\/\/[^\s\\]+)$/.test(u), "Use whatsapp, a page on the shop like /shop, or a full address starting with https://");
+const isRealDate = (v: string) => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(v);
+};
+
+export const popupForm = z
+  .object({
+    enabled: checkbox,
+    label: text(30),
+    title: text(80),
+    text: text(300, true),
+    button_text: text(30),
+    button_url: popupLink,
+    image,
+    tint: hex,
+    delay: z.coerce.number().int("Whole seconds only").min(0).max(60),
+    reshow_days: z.coerce.number().int("Whole days only").min(1).max(30),
+    ends_on: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isRealDate, "That isn't a real date")]).transform((v) => (v === "" ? null : v)),
+  })
+  .superRefine((p, ctx) => {
+    if (p.enabled && !p.title) ctx.addIssue({ code: "custom", path: ["title"], message: "Give the popup a heading before you switch it on" });
+    if (p.button_text && !p.button_url) ctx.addIssue({ code: "custom", path: ["button_url"], message: "Say where the button should go, or clear its label" });
+    if (p.button_url && !p.button_text) ctx.addIssue({ code: "custom", path: ["button_text"], message: "Give the button a label, or clear where it goes" });
+  });
 
 export const categoryForm = z.object({
   handle: slug,
